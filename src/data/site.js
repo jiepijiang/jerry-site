@@ -109,10 +109,19 @@ export const socials = [
  */
 export const siteProjects = [
   /**
-   * 「博客」暂时指向本站自己 —— 博客目前就是本站的一部分。
-   * 等博客拆成独立仓库后，把 href 换成那个新地址（这里留个提示免得忘）。
+   * 「知识库」= 原先的「博客」。
+   *
+   * 博客部分已拆成独立仓库 jiepijiang/jerry-notes —— 那里不是按时间倒序的
+   * 流水账，而是把笔记按「状态 × 分类」组织起来的分析看板（四视图 +
+   * 本地目录挂载）。所以卡片的标题也从「博客」改成了「知识库」，
+   * desc 里保留「Blog」这个词免得老访客找不到。
    */
-  { title: '博客', desc: '记录折腾日常', img: asset('static/img/i1.png'), href: 'https://jiepijiang.github.io/jerry-site/' },
+  {
+    title: '知识库',
+    desc: 'Blog · 笔记与决策记录',
+    img: asset('static/img/i1.png'),
+    href: 'https://jiepijiang.github.io/jerry-notes/',
+  },
   {
     title: '工具导航',
     desc: '网址导航与书签管理',
