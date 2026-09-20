@@ -93,7 +93,7 @@ function onSocialClick(item) {
     <div class="welcome">{{ profile.hello }} <span class="gradientText">{{ profile.name }}</span></div>
 
     <div class="description">
-      {{ profile.role.icon }} <span class="purpleText">{{ profile.role.highlight }}</span>{{ profile.role.rest }}
+      {{ profile.role.icon }} <span class="purpleText">{{ profile.role.highlight }}</span>
     </div>
 
     <div

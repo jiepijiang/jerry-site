@@ -1,0 +1,101 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200" role="img" aria-label="一只在敲代码的猫">
+  <title>敲代码的猫</title>
+  <desc>扁平卡通风格：一只白猫坐在笔记本电脑前，两只爪子搭在键盘上，屏幕上是彩色代码行。</desc>
+
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0.9" y2="1">
+      <stop offset="0" stop-color="#2a1f47"/>
+      <stop offset="0.55" stop-color="#1a1830"/>
+      <stop offset="1" stop-color="#0e1119"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.3" r="0.62">
+      <stop offset="0" stop-color="#bd34fe" stop-opacity="0.5"/>
+      <stop offset="0.55" stop-color="#747bff" stop-opacity="0.16"/>
+      <stop offset="1" stop-color="#747bff" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="screen" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2b2450"/>
+      <stop offset="1" stop-color="#14182a"/>
+    </linearGradient>
+    <linearGradient id="fur" x1="0.3" y1="0" x2="0.7" y2="1">
+      <stop offset="0" stop-color="#fffaf2"/>
+      <stop offset="1" stop-color="#f2e3d4"/>
+    </linearGradient>
+    <clipPath id="round">
+      <circle cx="100" cy="100" r="100"/>
+    </clipPath>
+  </defs>
+
+  <g clip-path="url(#round)">
+    <rect width="200" height="200" fill="url(#bg)"/>
+    <rect width="200" height="200" fill="url(#glow)"/>
+
+    <!-- 耳朵（先画，根部会被头盖住） -->
+    <path d="M63 54 L73 15 L95 43 Z" fill="url(#fur)"/>
+    <path d="M137 54 L127 15 L105 43 Z" fill="url(#fur)"/>
+    <path d="M70 49 L76 28 L87 45 Z" fill="#ffb3c8"/>
+    <path d="M130 49 L124 28 L113 45 Z" fill="#ffb3c8"/>
+
+    <!-- 身体 -->
+    <ellipse cx="100" cy="118" rx="37" ry="31" fill="url(#fur)"/>
+
+    <!-- 头 -->
+    <ellipse cx="100" cy="68" rx="43" ry="39" fill="url(#fur)"/>
+
+    <!-- 胡须 -->
+    <g stroke="#d8c6b4" stroke-width="1.4" stroke-linecap="round" fill="none">
+      <path d="M63 71 L45 66"/>
+      <path d="M63 78 L44 79"/>
+      <path d="M137 71 L155 66"/>
+      <path d="M137 78 L156 79"/>
+    </g>
+
+    <!-- 腮红 -->
+    <ellipse cx="68" cy="81" rx="9.5" ry="5.5" fill="#ff9eb5" opacity="0.5"/>
+    <ellipse cx="132" cy="81" rx="9.5" ry="5.5" fill="#ff9eb5" opacity="0.5"/>
+
+    <!-- 眼睛 -->
+    <ellipse cx="84" cy="66" rx="7.5" ry="9.5" fill="#23262f"/>
+    <ellipse cx="116" cy="66" rx="7.5" ry="9.5" fill="#23262f"/>
+    <circle cx="86.6" cy="61.5" r="3.1" fill="#ffffff"/>
+    <circle cx="118.6" cy="61.5" r="3.1" fill="#ffffff"/>
+    <circle cx="81.6" cy="70.5" r="1.6" fill="#ffffff" opacity="0.55"/>
+    <circle cx="113.6" cy="70.5" r="1.6" fill="#ffffff" opacity="0.55"/>
+
+    <!-- 鼻子 + 嘴 -->
+    <path d="M100 78.5 L96.2 74 L103.8 74 Z" fill="#ff8fa8"/>
+    <path d="M100 79 Q95 86.5 88.5 81" fill="none" stroke="#23262f" stroke-width="1.7" stroke-linecap="round"/>
+    <path d="M100 79 Q105 86.5 111.5 81" fill="none" stroke="#23262f" stroke-width="1.7" stroke-linecap="round"/>
+
+    <!-- 笔记本：屏幕 -->
+    <rect x="46" y="117" width="108" height="57" rx="7" fill="#3a3550"/>
+    <rect x="51" y="122" width="98" height="47" rx="4" fill="url(#screen)"/>
+
+    <!-- 屏幕上的代码行 -->
+    <g>
+      <rect x="58" y="129" width="26" height="4" rx="2" fill="#ff7b9c"/>
+      <rect x="88" y="129" width="16" height="4" rx="2" fill="#7be495"/>
+      <rect x="58" y="138" width="14" height="4" rx="2" fill="#ffd166"/>
+      <rect x="76" y="138" width="30" height="4" rx="2" fill="#6bc5ff"/>
+      <rect x="58" y="147" width="22" height="4" rx="2" fill="#b48cff"/>
+      <rect x="84" y="147" width="12" height="4" rx="2" fill="#ff7b9c"/>
+      <rect x="58" y="156" width="34" height="4" rx="2" fill="#7be495"/>
+      <rect x="96" y="156" width="9" height="4" rx="2" fill="#ffd166"/>
+    </g>
+
+    <!-- 键盘底座 -->
+    <path d="M46 174 L154 174 L158 184 L42 184 Z" fill="#4a4460"/>
+
+    <!-- 爪子（搭在键盘上） -->
+    <ellipse cx="78" cy="167" rx="13.5" ry="8.5" fill="url(#fur)"/>
+    <ellipse cx="122" cy="167" rx="13.5" ry="8.5" fill="url(#fur)"/>
+    <g stroke="#e6d5c2" stroke-width="1.2" stroke-linecap="round">
+      <path d="M71.5 163 L71.5 171.5"/>
+      <path d="M78 162 L78 173"/>
+      <path d="M84.5 163 L84.5 171.5"/>
+      <path d="M115.5 163 L115.5 171.5"/>
+      <path d="M122 162 L122 173"/>
+      <path d="M128.5 163 L128.5 171.5"/>
+    </g>
+  </g>
+</svg>

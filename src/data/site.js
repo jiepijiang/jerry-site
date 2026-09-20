@@ -18,14 +18,25 @@ const asset = (path) => `${import.meta.env.BASE_URL}${path.replace(/^\//, '')}`
 
 export const profile = {
   name: 'Jerry',
-  avatar: asset('static/img/logo.jpg'),
+  /**
+   * 头像。同时被三处复用：首屏 `.index-logo`、左侧栏 `.logo`、留言板 `.card-avatar`。
+   *
+   * 2026-09-20：由 `logo.jpg`（日系插画，少年站在蓝天下）换成手绘 SVG ——
+   * 一只坐在笔记本前敲代码的白猫。矢量图在 180px 头像和 32px favicon 上
+   * 都不会糊，也跟站点的扁平暗色调更贴。旧图仍在仓库里，想换回去改这一行即可。
+   */
+  avatar: asset('static/img/logo.svg'),
   /** 首屏大标题前缀 */
   hello: "Hello I'm",
   /**
-   * 第一行简介。highlight 那段会套紫色高亮样式，其余照常。
+   * 第一行简介。整段套紫色高亮样式。
    * 注意是单行显示（.description 20px），太长在窄屏会换行。
+   *
+   * 2026-09-20：原来写成 `highlight: 'H5 · 小程序 · App', rest: ' · Electron'`，
+   * 于是 Electron 落在高亮之外 —— 它是技术栈、不是补充说明，样式跟前面几个
+   * 不一致看着像掉队了。Jerry 指出后合并成一段，`rest` 字段一并去掉。
    */
-  role: { icon: '💻', highlight: 'H5 · 小程序 · App', rest: ' · Electron' },
+  role: { icon: '💻', highlight: 'H5 · 小程序 · App · Electron' },
   /**
    * 第二行简介：会以打字机效果逐字出现。
    * 长度控制在 20 字上下 —— 太长打字动画会拖很久。
@@ -36,7 +47,7 @@ export const profile = {
 /** 左侧信息卡 */
 export const locations = [
   { key: 'china', text: 'China' },
-  { key: 'city', text: 'SiChuan' },
+  { key: 'city', text: 'GuangXi' },
 ]
 
 /**
