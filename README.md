@@ -2,16 +2,23 @@
 
 基于 **Vue 3 + Vite** 的个人主页门户。
 
+> **定位**
+>
+> 前端技术栈：**H5 / 小程序 / App / Electron**；主要项目方向是**嵌入式设备**；
+> 同时在学 AI、做全栈相关的项目。主力技术栈 Vue、React、原生 JS、uni-app、
+> Electron、Node.js（App 先用 uni-app，之后用 AI 重构到 Flutter）。
+
 > **参考来源**
 >
 > 本项目参考 [**https://xywml.com/**](https://xywml.com/) 实现 —— 除文案内容
 > （站名、简介、卡片标题等）外，**UI、动效、布局均按该站点 1:1 复刻**。
 > 复刻保真度已用 Playwright 做像素级比对验证，见下方「复刻保真度」。
 
-> **当前进度：第二版**
+> **当前进度：第三版**
 >
-> 视觉与交互已与原站对齐，**文案已全部换成自己的内容**（`src/data/site.js`）。
-> 素材（头像、背景、项目图标、贡献图、技能树）仍是原站的资源，后续逐步替换。
+> 视觉与交互与原站对齐；**内容已全部换成自己的** —— 文案、时间轴、技能树、
+> 首屏的「最近在做什么」（原站那里是复刻对象的 GitHub 贡献图）。
+> 仍在用原站资源的只剩头像 / 背景 / 项目卡片配图（`public/static/img/`）。
 
 > **仓库名沿革**
 >
@@ -166,15 +173,27 @@ npm run preview  # 预览构建产物
 
 `public/static/svg/skillPc.svg` / `skillWap.svg` 由脚本产出。原来的那面图标墙是
 复刻对象的（混着 Go / Java / Qt / Kotlin / IntelliJ / Photoshop / 3ds Max），
-跟本站的前端定位对不上，已整体重做。
+跟本站的定位对不上，已整体重做。
+
+现在的 36 个图标按**前端技术栈（H5 / 小程序 / App / Electron）+ 嵌入式设备 + AI 全栈**
+来选，分两行：
+
+| 行 | 内容 |
+| --- | --- |
+| 1 | Vue · React · JavaScript · TypeScript · HTML5 · CSS · Vite · Node.js · uni-app · Electron · Flutter · 微信小程序 · Android · iOS · Tailwind CSS · Sass · Git · GitHub |
+| 2 | npm · pnpm · ESLint · GitHub Copilot · GitHub Actions · Express · MySQL · SQLite · Redis · Docker · NGINX · Linux · Arduino · Raspberry Pi · MQTT · Python · LangChain · Ollama |
+
+> **uni-app 那个图标是自绘的**（JSON 里标了 `custom: true`）——
+> simple-icons 里没有它，这里用一个几何化的 U 字形代替官方 logo，
+> 既避开商标/授权问题，形状也和这面墙的几何风格一致。
+> 其余 35 个都来自 simple-icons（官方品牌 SVG，CC0）。
+> 注：simple-icons 已下架 OpenAI 和 VS Code，所以这两个用不了。
 
 改图标清单 → 编辑 `scripts/skill-icons.json`（顺序即排列顺序）→ 然后：
 
 ```bash
 node scripts/gen-skill-tree.mjs
 ```
-
-图标来自 [simple-icons](https://simpleicons.org/)（官方品牌 SVG，CC0）。
 数据单独放在 JSON 里是为了让生成器**零依赖** —— 不用为了重新生成一面图标墙
 去装一个几十 MB 的包，图标集也跟着仓库一起被版本化固定住。
 

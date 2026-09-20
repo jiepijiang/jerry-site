@@ -25,7 +25,7 @@ export const profile = {
    * 第一行简介。highlight 那段会套紫色高亮样式，其余照常。
    * 注意是单行显示（.description 20px），太长在窄屏会换行。
    */
-  role: { icon: '💻', highlight: 'Front-end', rest: ' Developer' },
+  role: { icon: '💻', highlight: 'H5 · 小程序 · App', rest: ' · Electron' },
   /**
    * 第二行简介：会以打字机效果逐字出现。
    * 长度控制在 20 字上下 —— 太长打字动画会拖很久。
@@ -42,9 +42,26 @@ export const locations = [
 /**
  * 左侧标签
  * 技能方向 + 爱好混在一排，和原站的设计一致（原站也是「计算机/物理/天文/电影」混着放）。
- * 数量随意，容器是 flex-wrap，多了会自己换行。
+ * 容器是 flex-wrap，多了会自己换行；左侧栏本身可滚动（.Miyako-left 是 100vh + overflow-y），
+ * 所以条数不是硬约束，但太长会把时间轴挤到折叠线以下，控制在 12 条左右。
+ *
+ * 前半段是技术栈（按 Jerry 自述：Vue / React / 原生 JS / UniApp / Electron / Node.js，
+ * App 用 uni-app，之后用 AI 重构到 Flutter），后半段是爱好。
  */
-export const tags = ['Vue', 'JavaScript', 'Node.js', '微信小程序', '音乐', '电影', '摄影', '折腾']
+export const tags = [
+  'Vue',
+  'React',
+  'UniApp',
+  'Electron',
+  'Node.js',
+  'Flutter',
+  '微信小程序',
+  '嵌入式设备',
+  'AI 全栈',
+  '音乐',
+  '电影',
+  '摄影',
+]
 
 /**
  * 左侧时间轴（第一条会高亮脉冲）
