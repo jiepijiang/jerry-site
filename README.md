@@ -17,8 +17,8 @@
 > **当前进度：第三版**
 >
 > 视觉与交互与原站对齐；**内容已全部换成自己的** —— 文案、时间轴、技能树、
-> 首屏的「最近在做什么」（原站那里是复刻对象的 GitHub 贡献图）。
-> 仍在用原站资源的只剩头像 / 背景 / 项目卡片配图（`public/static/img/`）。
+> 头像、首屏的「最近在做什么」（原站那里是复刻对象的 GitHub 贡献图）。
+> 仍在用原站资源的只剩背景图和项目卡片配图（`public/static/img/background.jpg`、`i1~i6.png`）。
 
 > **仓库名沿革**
 >
@@ -383,7 +383,8 @@ GITHUB_TOKEN=$(gh auth token) npx generate-snake-animation@3 \
 
 ## 换成你自己的资源
 
-> 仓库里现在带的素材都来自原站，正式使用前请按下面几条替换掉。
+> 仓库里的素材分两类：**大部分已经换成 Jerry 自己的**（头像、音乐、技能树、贪吃蛇），
+> 只剩 `background.jpg` 和 `i1~i6.png` 还是原站的，正式对外用之前建议替换掉。
 
 - **文案**：改 `src/data/site.js`（站名、简介、标签、时间轴、卡片、歌单都在这里）
 - **音乐**：`public/static/music/` 里是原创纯音乐《夜航》（`night-sail.mp3` + 封面），
@@ -391,7 +392,18 @@ GITHUB_TOKEN=$(gh auth token) npx generate-snake-animation@3 \
   换歌三步：把音频丢进 `public/static/music/` → 在 `site.js` 的 `playlist` 里填
   `src` / `cover` / `lyric`（LRC 格式）→ 重新部署。
   不想部署也能听：播放器里「选择本地音频播放」，或直接把音频文件拖进去。
-- **头像 / 背景**：替换 `public/static/img/logo.jpg`、`background.jpg`
+- **头像**：`public/static/img/avatar.jpg`。`site.js` 的 `profile.avatar` **一处定义、
+  三处复用**（首屏 `.index-logo` / 左侧栏 `.logo` / 留言板头像），改那一行即可。
+
+  ⚠️ **favicon 不是同一张图，要单独重新裁一版** —— tab 图标用的是
+  `public/static/img/favicon.jpg`（从头像裁出的头部特写）。
+  为什么不直接复用整图：插画的背景和桌面占了太多画幅，缩到 16/32px 只剩一个色团。
+  裁的时候注意**圆形裁切会吃掉四角**，主体到裁切框中心的距离要 ≤ 半径。
+
+  这两个文件不在一个地方（头像在 `src/data/site.js`，favicon 和 preload 在 `index.html`），
+  是本站最容易「只改一半」的地方。旧素材 `logo.jpg`（原站的日系插画）和
+  `logo.svg`（手绘猫）都留在仓库里，想换回去改一行。
+- **背景**：替换 `public/static/img/background.jpg`
 - **技能树**：改 `scripts/skill-icons.json` 后跑 `node scripts/gen-skill-tree.mjs`
   （不要手改 SVG，见上文「技能树是生成的」）
 - **首屏 GitHub 动态**：`site.js` 的 `github.username` 与 `scripts/gen-recent.mjs`
