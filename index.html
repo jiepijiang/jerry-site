@@ -4,7 +4,13 @@
     <meta charset="utf-8" />
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <title>Jerry'喵的Site</title>
-    <link rel="icon" href="/static/img/logo.svg" type="image/svg+xml" />
+    <!--
+      favicon 故意**不是**头像那张整图：整图在 16/32px 下只剩一个白团。
+      这里用的是同一张图裁出来的头部特写（256×256，15KB），
+      问号完整包在圆内，小尺寸下还认得出。
+      换头像时 favicon 要单独重新裁一版，别只改 src/data/site.js。
+    -->
+    <link rel="icon" href="/static/img/favicon.jpg" type="image/jpeg" />
     <meta
       name="description"
       content="Jerry 的个人主页 —— 前端（H5 / 小程序 / App / Electron）、嵌入式设备项目与 AI 全栈折腾记录"
@@ -18,7 +24,7 @@
       content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"
     />
     <!-- 头像同时是首屏/侧栏/留言板三处的背景图，提前拉一下省得首屏闪一下空白 -->
-    <link rel="preload" href="/static/img/logo.svg" as="image" type="image/svg+xml" />
+    <link rel="preload" href="/static/img/avatar.jpg" as="image" type="image/jpeg" />
     <link rel="preload" href="/static/fonts/Ubuntu-Regular.ttf" as="font" type="font/ttf" crossorigin />
     <link rel="preload" href="/static/fonts/Pacifico-Regular.ttf" as="font" type="font/ttf" crossorigin />
     <style>

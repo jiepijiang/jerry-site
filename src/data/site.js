@@ -19,13 +19,17 @@ const asset = (path) => `${import.meta.env.BASE_URL}${path.replace(/^\//, '')}`
 export const profile = {
   name: 'Jerry',
   /**
-   * 头像。同时被三处复用：首屏 `.index-logo`、左侧栏 `.logo`、留言板 `.card-avatar`。
+   * 头像。同时被三处复用：首屏 `.index-logo`、左侧栏 `.logo`、留言板 `.card-avatar`，
+   * 以及 `index.html` 里的 favicon 和 preload —— 换头像要一起改，见 README。
    *
-   * 2026-09-20：由 `logo.jpg`（日系插画，少年站在蓝天下）换成手绘 SVG ——
-   * 一只坐在笔记本前敲代码的白猫。矢量图在 180px 头像和 32px favicon 上
-   * 都不会糊，也跟站点的扁平暗色调更贴。旧图仍在仓库里，想换回去改这一行即可。
+   * 沿革（都还在仓库里，想换回去改这一行即可）：
+   *   `avatar.jpg` ← 当前。Jerry 自己挑的：缠着绷带的木乃伊在电脑前敲代码，
+   *                 头顶一个橙色问号。1024 方图，这里存 640×640 / q86 / 92KB
+   *                 （最大展示 180px，3× DPR 只需 540，再大是浪费）。
+   *   `logo.svg`   ← 手绘扁平卡通白猫。上一轮临时顶上的。
+   *   `logo.jpg`   ← 最初的日系插画（《云之彼端》动画截图）。
    */
-  avatar: asset('static/img/logo.svg'),
+  avatar: asset('static/img/avatar.jpg'),
   /** 首屏大标题前缀 */
   hello: "Hello I'm",
   /**
