@@ -156,7 +156,7 @@ npm run preview  # 预览构建产物
 
 | 条目 | 日期 | 依据 |
 | --- | --- | --- |
-| 自建博客与导航站 | 2026.9 | jerry-site / jerry-tools / jerry-notes 创建于 2026-09 |
+| 自建知识库与导航站 | 2026.9 | jerry-site / jerry-tools / jerry-notes 创建于 2026-09 |
 | 扫码 H5 · 停车码 | 2025.10 | `scanCode-demo`（H5 调摄像头扫码）创建于 2025-10-29 |
 | 折腾 Next.js 博客 | 2022.3 | `nextjs-blog-theme` 创建于 2022-03-10 |
 | 微信小程序 | 2020.5 | `yougoushop` 创建于 2020-05-15 |
