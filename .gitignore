@@ -22,5 +22,8 @@ npm-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
+# 贪吃蛇生成器的暂存目录（deploy.yml 里先写到这里，确认有内容才覆盖正式文件）
+.snake
+
 # 本机 AI 工作区（项目记忆等本地状态，不随仓库分发）
 .workbuddy-ai

@@ -42,6 +42,30 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      # 重新生成首屏的贪吃蛇贡献图。同样只能放构建期 —— 它读的是 GitHub 的
+      # 贡献日历，浏览器里没有可用的公开接口（也没有 CORS）。
+      #
+      # **失败不影响发布**：仓库里那份 snake.svg 是兜底，一张图不该把整站部署搞挂。
+      # 所以先写到 .snake/ 暂存，确认有内容了再覆盖 —— 直接往目标路径写的话，
+      # 中途失败会留下一个半截文件。
+      - name: 生成贡献贪吃蛇
+        continue-on-error: true
+        uses: Platane/snk@v3
+        with:
+          github_user_name: jiepijiang
+          # color_snake 用站点主色，默认的 purple(#800080) 压在浅灰格子上看不清蛇。
+          # %23 就是 #，写 # 在 YAML 里容易被当成注释。
+          outputs: .snake/snake.svg?color_snake=%23bd34fe
+
+      - name: 替换贪吃蛇（没生成出来就沿用仓库里那份）
+        run: |
+          if [ -s .snake/snake.svg ]; then
+            cp .snake/snake.svg public/static/img/snake.svg
+            echo "✓ 已更新 snake.svg（$(wc -c < public/static/img/snake.svg) 字节）"
+          else
+            echo "· 本次没生成出来，沿用仓库里的 snake.svg"
+          fi
+
       - name: 构建
         run: npm run build
 
