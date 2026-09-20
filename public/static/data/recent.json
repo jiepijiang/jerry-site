@@ -1,0 +1,34 @@
+{
+  "username": "jiepijiang",
+  "generatedAt": "2026-09-20T02:57:32.472Z",
+  "repos": [
+    {
+      "name": "jerry-site",
+      "url": "https://github.com/jiepijiang/jerry-site",
+      "description": "个人主页 / 博客门户（Vue 3 + Vite），UI、动效、布局参考 https://xywml.com/ 复刻",
+      "language": "Vue",
+      "pushedAt": "2026-09-20T01:37:01Z"
+    },
+    {
+      "name": "jerry-tools",
+      "url": "https://github.com/jiepijiang/jerry-tools",
+      "description": "Jerry 导航 —— 网址导航与书签管理，功能参考 dh.huhage.fun，视觉参考 jerry-blog",
+      "language": "Vue",
+      "pushedAt": "2026-09-19T10:10:56Z"
+    },
+    {
+      "name": "scanCode-demo",
+      "url": "https://github.com/jiepijiang/scanCode-demo",
+      "description": "话",
+      "language": "HTML",
+      "pushedAt": "2025-10-29T14:15:42Z"
+    },
+    {
+      "name": "news_admin",
+      "url": "https://github.com/jiepijiang/news_admin",
+      "description": "",
+      "language": "JavaScript",
+      "pushedAt": "2023-01-06T03:10:06Z"
+    }
+  ]
+}

@@ -4,6 +4,10 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+  # 每天重新生成一次「最近在做什么」的数据。
+  # UTC 21:17 = 北京时间 05:17，避开整点（GitHub 的定时任务在整点高峰常被延迟）。
+  schedule:
+    - cron: '17 21 * * *'
 
 permissions:
   contents: read
@@ -28,6 +32,15 @@ jobs:
 
       - name: 安装依赖
         run: npm ci
+
+      # 在构建期把「最近在做什么」的数据拉下来。放在这里而不是浏览器里，
+      # 是因为未登录的 api.github.com 限流按**出口 IP** 算（60 次/小时），
+      # 走代理时出口 IP 共享，访客很容易吃 403 → 首页那一块空白。
+      # CI 里带 token 是 5000 次/小时，不会限流。
+      - name: 拉取 GitHub 最近动态
+        run: npm run recent
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: 构建
         run: npm run build

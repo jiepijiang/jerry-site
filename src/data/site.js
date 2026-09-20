@@ -152,9 +152,11 @@ export const toolProjects = [
  *   53 周 371 天里只有 6 天有提交（1.6%），全年 20 次，单日最高 7 次。
  *   一条蛇爬在 98.4% 空白的灰格子上，看起来像坏了。
  *
- * 所以改成拉 GitHub 公开 API 显示最近推送的仓库 —— 动态、永远有内容、
- * 而且真的是自己的。未登录时 GitHub 限流 60 次/小时/IP，个人站够用。
- * 取不到数据时**保持原高度**并显示一行静默提示，不会把版式顶动。
+ * 所以改成显示最近推送的仓库。**数据是构建期生成的，不直连 GitHub API** ——
+ * 未登录的 api.github.com 限流是 60 次/小时/**出口 IP**，走代理时出口 IP 共享，
+ * 实测浏览器请求直接吃 403，那一块就只剩一句「取不到数据」。
+ * 由 `scripts/gen-recent.mjs` 生成 `public/static/data/recent.json`，
+ * CI 里带 token 跑（额度 5000/小时），另外每天定时重新生成一次。
  */
 export const github = {
   username: 'jiepijiang',
@@ -171,6 +173,7 @@ export const github = {
     SCSS: '#C6538C',
     Python: '#3572A5',
     Java: '#B07219',
+    Dart: '#00B4AB',
     'C++': '#F34B7D',
     C: '#555555',
   },

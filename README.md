@@ -139,7 +139,7 @@ npm run preview  # 预览构建产物
 | `locations` / `tags` / `timeline` | 左侧三块卡片 |
 | `socials` | 图标条（`action: 'music'` 表示点击打开音乐幕帘） |
 | `siteProjects` / `toolProjects` | 两组项目卡片 |
-| `github` | 首屏「最近在做什么」：拉 GitHub 公开 API 显示最近推送的仓库（原站这里是贪吃蛇贡献图） |
+| `github` | 首屏「最近在做什么」：显示最近推送的仓库。数据**构建期**生成，见下（原站这里是贪吃蛇贡献图） |
 | `skills` | 技能树 SVG（桌面 / 移动两版）。**由脚本生成**，见下 |
 | `footer` | 备案号（默认留空，见下）与版权 |
 
@@ -213,6 +213,32 @@ node scripts/gen-skill-tree.mjs
 > 别用 WCAG 对比度去卡这件事 —— npm 的红对比度只有 2.87，比 MySQL 的 3.10 还低，
 > 但它是整块实心方块，读起来毫无问题。**决定可读性的是填充面积，不是颜色。**
 
+### 「最近在做什么」的数据也是构建期生成的
+
+`public/static/data/recent.json` 由 `scripts/gen-recent.mjs` 产出，**前端不再直连
+`api.github.com`**：
+
+```bash
+GITHUB_TOKEN=xxx node scripts/gen-recent.mjs   # 不带 token 也能跑，只是限额低
+```
+
+> ⚠️ **别把这段改回运行时请求。** 一开始就是在浏览器里 fetch 公开 API 的，
+> 本地调试一切正常，线上却整块显示「暂时取不到 GitHub 数据」——
+> 未登录 API 限额是 **60 次/小时/出口 IP**，走代理时这个 IP 是**所有访客共享**的，
+> 所以只有真实访客会踩到，本地开发机（直连、独立 IP）永远复现不出来。
+> 改成构建期生成后，运行时对 GitHub 的请求数是 **0**。
+
+几个刻意的设计：
+
+- **失败时绝不覆盖已有文件**（`existsSync(OUT)` 直接退出 0）。CI 偶发抖动时
+  宁可线上继续用昨天的数据，也不能把页面刷成空白。
+- 存的是**绝对时间戳**（`pushedAt`），「1 小时前」这类相对时间由前端实时算，
+  所以一份静态数据放多久都不会显示成「0 分钟前」。
+- 本地没有 `GITHUB_TOKEN` 时用未登录接口；GitHub Actions 里注入 `secrets.GITHUB_TOKEN`
+  （限额 5000/小时）。
+- 工作流里加了每日定时（`cron: '17 21 * * *'`，UTC 21:17 = 北京 05:17），
+  即使不推代码也会刷新一次数据。
+
 ---
 
 ## 复刻保真度
@@ -235,6 +261,11 @@ node scripts/gen-skill-tree.mjs
 > - 首屏贪吃蛇换成「最近在做什么」后，页面总高 **1118 → 1115**。
 >   原站那张 `<img>` 是行内元素，底部有约 3px 的基线间隙；新块是 flex 容器没有这个间隙。
 >   新块的容器保留了原图 `880 / 192` 的宽高比，所以盒子本身没动，只是少了那 3px。
+> - 窄屏（≤800px）下这一块改成**上下两行**（仓库名一行、`语言 · 时间` 一行），
+>   所以 700 / 375 两档各 **+24px**（2137 → 2161、1745 → 1769）。
+>   原先单行排布会把 `scanCode-demo` 截成 `scanCode-` —— 而且**没有省略号**，
+>   因为 `text-overflow: ellipsis` 对 flex 容器不生效，必须套在真正包着文字的块级元素上
+>   （见 `ProfileHeader.vue` 的 `.recent-label`）。
 
 | 检查项 | 结果 |
 | --- | --- |
@@ -242,7 +273,7 @@ node scripts/gen-skill-tree.mjs
 | 留言板关键元素盒模型（卡片 / 输入框 / 按钮 / 页脚等 17 项） | Light、Dark 两套主题下均 0px 偏差 |
 | 留言板图标上色（6 个 SVG 的 `fill`） | 与原站完全一致 |
 | 页面总高（1440 宽） | 原站 1118px；本站 1115px（差值见上方说明） |
-| 响应式 1000×900 / 700×900 / 375×812 | 原站 1327 / 2160 / 1697；本站 1324 / 2137 / 1745 |
+| 响应式 1000×900 / 700×900 / 375×812 | 原站 1327 / 2160 / 1697；本站 1324 / 2161 / 1769（差值见上方说明） |
 | 左侧栏 / 卡片区 / 技能树 / 页脚 像素差异 | 0 差异像素 |
 | 首页整页像素差异 | 0.57%，全部来自「站名文字不同」与「动画帧不同」 |
 | 留言板整页像素差异（Light / Dark） | 0.36% / 0.35%，仅站名与版权两行文字 |
@@ -276,7 +307,7 @@ node scripts/gen-skill-tree.mjs
 3. **主题开关滑块位置**：原站在「系统深色 + 从未手动切换过」时，页面已经是 Dark，
    但滑块停在左侧（`checked` 只按 `localStorage` 算），要点两下才切到 Light。
    本项目让滑块反映真实主题，点一下即可切换。
-4. **首屏的贪吃蛇贡献图 → 已整体移除**，换成「最近在做什么」（拉 GitHub 公开 API）。
+4. **首屏的贪吃蛇贡献图 → 已整体移除**，换成「最近在做什么」（数据构建期生成，见上文）。
    原站那张是 [Platane/snk](https://github.com/Platane/snk) 生成的**复刻对象站长的**
    GitHub 贡献图，属于「挂着别人的数据」。而换成自己的也走不通 —— 实测
    53 周 371 天里只有 6 天有提交（1.6%），一条蛇爬在 98.4% 空白的灰格子上像坏了。
@@ -328,5 +359,7 @@ node scripts/gen-skill-tree.mjs
 - **头像 / 背景**：替换 `public/static/img/logo.jpg`、`background.jpg`
 - **技能树**：改 `scripts/skill-icons.json` 后跑 `node scripts/gen-skill-tree.mjs`
   （不要手改 SVG，见上文「技能树是生成的」）
+- **首屏 GitHub 动态**：`site.js` 的 `github.username` 与 `scripts/gen-recent.mjs`
+  顶部的 `USERNAME` 是同一个值，两处都要改；改完跑 `npm run recent` 重新取数
 - **项目图标**：替换 `public/static/img/i1~i6.png`（建议 200×200 透明 PNG）
 - **字体**：`public/static/fonts/`（Ubuntu 正文、Pacifico 渐变标题），换成自己的或改 `base.css` 里的 `@font-face`
