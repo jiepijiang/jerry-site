@@ -1,20 +1,27 @@
 {
   "username": "jiepijiang",
-  "generatedAt": "2026-09-20T02:57:32.472Z",
+  "generatedAt": "2026-09-20T06:32:39.769Z",
   "repos": [
-    {
-      "name": "jerry-site",
-      "url": "https://github.com/jiepijiang/jerry-site",
-      "description": "个人主页 / 博客门户（Vue 3 + Vite），UI、动效、布局参考 https://xywml.com/ 复刻",
-      "language": "Vue",
-      "pushedAt": "2026-09-20T01:37:01Z"
-    },
     {
       "name": "jerry-tools",
       "url": "https://github.com/jiepijiang/jerry-tools",
-      "description": "Jerry 导航 —— 网址导航与书签管理，功能参考 dh.huhage.fun，视觉参考 jerry-blog",
+      "description": "Jerry 导航 —— 网址导航与书签管理，功能参考 dh.huhage.fun，视觉沿用 jerry-site",
       "language": "Vue",
-      "pushedAt": "2026-09-19T10:10:56Z"
+      "pushedAt": "2026-09-20T06:28:05Z"
+    },
+    {
+      "name": "jerry-notes",
+      "url": "https://github.com/jiepijiang/jerry-notes",
+      "description": "Jerry 的知识库 —— 结构化笔记的分析看板，支持挂载本地笔记目录",
+      "language": "Vue",
+      "pushedAt": "2026-09-20T05:58:17Z"
+    },
+    {
+      "name": "jerry-site",
+      "url": "https://github.com/jiepijiang/jerry-site",
+      "description": "个人门户（Vue 3 + Vite）—— 留言板 / 音乐播放器 / 技能树，UI、动效、布局参考 xywml.com 复刻",
+      "language": "Vue",
+      "pushedAt": "2026-09-20T05:48:48Z"
     },
     {
       "name": "scanCode-demo",
@@ -22,13 +29,6 @@
       "description": "话",
       "language": "HTML",
       "pushedAt": "2025-10-29T14:15:42Z"
-    },
-    {
-      "name": "news_admin",
-      "url": "https://github.com/jiepijiang/news_admin",
-      "description": "",
-      "language": "JavaScript",
-      "pushedAt": "2023-01-06T03:10:06Z"
     }
   ]
 }
