@@ -178,11 +178,21 @@ export const siteProjects = [
  * 真要加回首页，得先决定拿掉现有四张里的哪一张（或改网格列数）。
  */
 export const toolProjects = [
+  /**
+   * 2026-09-23：停车码改指向**自己的静态站**，不再指向飞书妙搭。
+   *
+   * 原地址 `https://scnrhostplnc.feishuapp.com/app/app_17cw6j1xyk0` 是妙搭上的
+   * 应用引擎实例。现在这个页面已经被 1:1 复刻成纯静态站点
+   * （`jiepijiang/parking-notice`，React + Vite，无后端，
+   * 通知走飞书群机器人 Webhook），自己完全掌控、也不再依赖妙搭的运行时。
+   *
+   * 文案一个字没动 —— 只换 href，不影响布局（卡片尺寸与页高都不变）。
+   */
   {
     title: '停车码',
     desc: '临时停车，扫码通知车主',
     img: asset('static/img/i3.png'),
-    href: 'https://scnrhostplnc.feishuapp.com/app/app_17cw6j1xyk0',
+    href: 'https://jiepijiang.github.io/parking-notice/',
   },
   { title: '2FA', desc: '在线 TOTP 验证码', img: asset('static/img/i1.png'), href: 'https://2fa.cn/' },
   { title: '画板', desc: 'Powered by Excalidraw', img: asset('static/img/i4.png'), href: 'https://excalidraw.com/' },
