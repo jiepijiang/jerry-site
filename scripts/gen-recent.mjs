@@ -62,8 +62,32 @@ try {
   process.exit(0)
 }
 
+/**
+ * 过滤 + 记录
+ * ---------------------------------------------------------------------------
+ * ① `!r.fork` —— fork 只代表兴趣，不算「我在做什么」。
+ * ② `!r.private` —— **冗余保险，防的是「将来换接口」，不是防当前接口。**
+ *
+ *    当前用的 `GET /users/{username}/repos` **只返回 public 仓库**，与令牌无关。
+ *    2026-10-01 实测（拿本人 `repo` scope 的 OAuth token 请求）：
+ *      · `/users/jiepijiang/repos?type=` all / public / private / owner / member
+ *        → 五种取值**全部 0 个私有**；
+ *      · 同一个 token 打 `/user/repos?affiliation=owner` → 32 条、**其中 9 条私有**。
+ *    所以今天就算把 GITHUB_TOKEN 换成 PAT，**也漏不出去**。
+ *
+ *    真正的风险在「换接口」：会带出 private 的是 `/user/repos`，
+ *    而它恰恰是「列出我自己的仓库」时最顺手的写法。
+ *    谁哪天顺手把上面那行 URL 换了，这行拦住他。
+ *
+ *    ⚠️ 过滤掉东西时**必须打日志**，不静默 —— 静默过滤会让人误以为「数据本来就这么多」。
+ */
+const skipped = { fork: 0, private: 0 }
 const repos = list
-  .filter((r) => !r.fork) // fork 只代表兴趣，不算「我在做什么」
+  .filter((r) => {
+    if (r.fork) return (skipped.fork++, false)
+    if (r.private) return (skipped.private++, false)
+    return true
+  })
   .slice(0, LIMIT)
   .map((r) => ({
     name: r.name,
@@ -73,6 +97,13 @@ const repos = list
     /** 绝对时间戳 —— 相对时间交给前端算，避免数据放一天就过期 */
     pushedAt: r.pushed_at,
   }))
+
+if (skipped.private) {
+  console.warn(
+    `⚠️ 过滤掉了 ${skipped.private} 个私有仓库 —— 上游接口是不是换了？\n` +
+      `   请确认 URL 没被从 /users/${USERNAME}/repos 改成 /user/repos。`,
+  )
+}
 
 mkdirSync(dirname(OUT), { recursive: true })
 writeFileSync(

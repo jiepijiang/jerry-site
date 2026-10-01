@@ -238,6 +238,22 @@ GITHUB_TOKEN=xxx node scripts/gen-recent.mjs   # 不带 token 也能跑，只是
   （限额 5000/小时）。
 - 工作流里加了每日定时（`cron: '17 21 * * *'`，UTC 21:17 = 北京 05:17），
   即使不推代码也会刷新一次数据。
+- **过滤掉 fork，也过滤掉私有仓库**（`!r.fork && !r.private`），过滤时**打警告日志**。
+
+  ⚠️ 这道 `!r.private` 是**冗余保险，防的是「将来换接口」，不是防当前接口** ——
+  当前用的 `GET /users/{username}/repos` **本身就只返回 public 仓库，与令牌无关**。
+  2026-10-01 实测（拿本人 `repo` scope 的 OAuth token 请求）：
+
+  | 请求 | 结果 |
+  | --- | --- |
+  | `/users/jiepijiang/repos?type=` all / public / private / owner / member | 五种取值**全部 0 个私有** |
+  | 同一个 token 打 `/user/repos?affiliation=owner` | 32 条，**其中 9 条私有** |
+
+  所以就算把 `GITHUB_TOKEN` 换成 PAT，**也漏不出去**。真正的风险在「换接口」——
+  会带出 private 的正是 `/user/repos`，而它恰恰是「列出我自己的仓库」时最顺手的写法。
+  谁哪天顺手把上面那行 URL 换了，这行 `!r.private` 拦住他。
+  守卫本身由 `/tmp/jtools/test-gen-recent-guard.mjs` 用**合成 payload 打真实脚本**验证
+  （真实数据里一个私有仓库都没有，光跑真脚本证明不了它有用）。
 
 ### 贪吃蛇贡献图也是构建期生成的
 
