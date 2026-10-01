@@ -273,9 +273,27 @@ NODE_PATH=$PWD/node_modules node /tmp/jtools/run-feishu-config-sql.mjs --break=h
 **④ 对真 Supabase 打一遍**（需要 `.env.local`）：
 
 ```bash
+# 迁移到底落库没有？—— **只用 anon key**，不需要管理凭据
+node /tmp/jtools/check-003-state.mjs      # 003：三个函数在不在、anon 有没有被拒
+node /tmp/jtools/check-migration-state.mjs # 001/002 的表在不在
+
 node /tmp/jtools/probe-rpc-live.mjs           # 只读：函数在不在、校验分支对不对、anon 能不能直连
 node /tmp/jtools/probe-rpc-live.mjs --write   # 含真实写入 + 限流（会留下测试数据，见文件里的清理语句）
 ```
+
+`check-*-state.mjs` 靠的是 PostgREST 的**两种不同错误**：
+
+| 返回 | 含义 |
+| --- | --- |
+| `404` `PGRST202` / `PGRST205` | 函数 / 表**还不存在** → 迁移没跑 |
+| `401` `42501` permission denied | **存在，anon 被正确拒绝** → 迁移跑过了、权限也对 ✅ |
+| `200` | 🔴 存在**而且 anon 能调** → revoke 没生效，要立刻查 |
+
+> ⚠️ **`42501` 才是成功信号** —— 别看到「报错」就以为失败了。
+> ⚠️ 探 `guestbook_configure_feishu` 时**故意传空串**：万一 revoke 真失效了，
+> 也会被 URL 校验挡在写入之前。**探测不能有副作用。**
+> ⚠️ PostgREST 的 schema cache 在 DDL 后要几秒才刷新，脚本会**重试几次**再下结论 ——
+> 否则刚跑完就被误判成「没跑」。
 
 ⚠️ PGlite 与真实 Supabase 的差异：没有 PostgREST（`request.headers` 要手动 `set_config`）、
 没有 `anon` / `authenticated` 角色（脚本自己建）、没有 `pg_net` / `pgcrypto`（用桩）。
