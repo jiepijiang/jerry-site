@@ -250,8 +250,18 @@ select * from public.guestbook_notify_status();  -- HTTP 200 才算真的到了
 - 本地：复制 `.env.example` 成 `.env.local` 填上（已被 `.gitignore` 忽略）。
 - CI：在仓库 **Settings → Secrets and variables → Actions → Variables** 里配这两个
   （用 `vars` 不是 `secrets` —— anon key 本来就公开，`service_role` 绝不能进工作流）。
-  `deploy.yml` 里有一个「核对 Supabase 配置是否已注入」的步骤，没配会 `::warning`，
-  配了但产物里 grep 不到会 `::error` 直接失败。
+  `deploy.yml` 里有一个「核对 Supabase 配置是否已注入」的步骤，**分两层**：
+  ① `npm run check:env` 判断**变量本身**对不对（形状 / 空白 / `role` 是不是 `anon` /
+  ref 对不对得上 / 过没过期），② grep 产物确认**真的注入了**。
+  没配 → `::warning` 照常发布；配了但产物里 grep 不到、或者值本身有问题 → `::error` 直接失败。
+
+> ⚠️ **粘贴 anon key 时别把换行一起复制进去。**
+> 2026-10-01 就是这么踩的：Variables 里存成了 210 个字符（208 + CRLF），
+> 带尾随换行的 key 被烧进了线上 bundle。当时第 ① 层写的是
+> `echo "…（anon key 长度 ${#KEY}）"` —— 只**打印**不**判断**，把 210 打出来就放行了。
+> 现在 `src/data/site.js` 里两个值都 `.trim()`，脚本也会警告；
+> 但**中间**夹空白是 `.trim()` 救不了的（`new Headers` 会抛 `TypeError: Invalid value`，
+> 每次提交都失败，而本地变量干净、永远复现不出来），所以脚本对「中间有空白」是直接报红。
 
 ## 本地怎么验
 

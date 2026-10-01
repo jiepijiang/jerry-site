@@ -344,14 +344,56 @@ GITHUB_TOKEN=$(gh auth token) npx generate-snake-animation@3 \
 | 本地 `.env.local` | `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` | 从 `.env.example` 复制 |
 | CI 仓库 Variables | 同上 | 用 `vars` 不是 `secrets`；`service_role` 绝不能进 |
 
+⚠️ **粘贴这两个值时注意别把换行一起复制进去** —— 见下面那段「只打印不判断」。
+
 **两个都要配**才算配置好（只配 URL 会 401，不如当作没配）。
 都没配时 `endpoint` 为空 → 退回本地假成功，**但控制台会打 `console.warn` 留痕** ——
 静默的假成功比直接报错更坑。
 
-`deploy.yml` 里有一个「核对 Supabase 配置是否已注入」的步骤：
-缺变量 → `::warning`；给了变量但产物里 grep 不到 URL 或 RPC 路径 → `::error` 直接失败。
-（Vite 的 `import.meta.env.VITE_*` 是**构建期静态替换**，变量没注入不会报错，
-只会静默地把 endpoint 变成空串，线上表现是「点了没反应」——本地复现不出来。）
+`deploy.yml` 里有一个「核对 Supabase 配置是否已注入」的步骤，**分两层**：
+
+1. **变量本身对不对** —— `npm run check:env`（`scripts/check-supabase-env.mjs`）。
+   检查形状、空白、`role` 是不是 `anon`、key 的 ref 和 URL 的 ref 对不对得上、过没过期。
+   这个脚本本地也能跑，不用等 CI。
+2. **产物里到底有没有** —— 给了变量但 `dist/assets/` 里 grep 不到 URL 或 RPC 路径 → `::error` 直接失败。
+   （Vite 的 `import.meta.env.VITE_*` 是**构建期静态替换**，变量没注入不会报错，
+   只会静默地把 endpoint 变成空串，线上表现是「点了没反应」——本地复现不出来。）
+
+两层不能互相替代：① 管「值对不对」，② 管「有没有生效」。两个都没配 → `::warning`，照常发布。
+
+> ⚠️ **第 ① 层是补上来的，因为原来那一版只「打印」不「判断」。**
+>
+> 原来第 ① 层是这么写的：
+>
+> ```bash
+> echo "✅ 已注入 Supabase：$VITE_SUPABASE_URL（anon key 长度 ${#VITE_SUPABASE_ANON_KEY}）"
+> ```
+>
+> 2026-10-01 Jerry 往 Variables 里粘 anon key 时尾巴上带了个 CRLF（208 → 210 字符），
+> 这行老老实实把 `长度 210` 打了出来，**然后放行**；后面两条 grep 只查 URL 和 RPC 路径，
+> **密钥本身一个字都没查**。于是带尾随换行的 key 被烧进了线上 bundle。
+>
+> 那次没出事，是**规范兜着**：Fetch 要求 header 值先做归一化、剥掉首尾 HTTP 空白
+> （SP / HT / CR / LF），所以浏览器真正发出去的是干净的 208。真 Chromium 实测：
+> `new Headers([['apikey', 脏值210]])` 取回来就是 208，脏值和干净值打 PostgREST
+> 的结果**逐字节一致**（都是 HTTP 200 + `invalid_email`）。
+>
+> 但那是运气不是设计。换个客户端（`curl -H "apikey: …"`、别的运行时）就可能 401；
+> 更糟的是**中间**夹空白 —— 那个 `.trim()` 救不了，`new Headers` 会直接抛
+> `TypeError: Failed to construct 'Headers': Invalid value`，每次提交都失败，
+> 而本地变量是干净的、**永远复现不出来**。
+>
+> 所以现在两层一起上：
+>
+> - `src/data/site.js` 里两个值都加 `.trim()` —— 在入口把「输入带首尾空白」吸收掉，
+>   任何环境都可能有这种输入，不该靠人去网页里小心复制。
+> - `scripts/check-supabase-env.mjs` 判断值本身。**首尾空白只警告、不报错** ——
+>   有 `.trim()` 兜着，为一个不影响功能的问题把构建搞红，只会训练人忽略红灯。
+>   但「中间有空白」「role 不是 anon」「ref 对不上」「已过期」都是 `::error` 直接红。
+>
+> `role 必须是 anon` 这条是顺带加上的、以前完全没有的断言：把 `service_role` 贴进一个
+> `VITE_` 变量，它会被静态替换进 bundle 发给每一个访客，而 `service_role` 是**绕过 RLS** 的
+> —— 等于把全库读写权限公开出去。这个错误以前没有任何地方会拦。
 
 ### 新留言 → 飞书通知
 
@@ -425,6 +467,14 @@ node /tmp/jtools/probe-rpc-live.mjs --write   # 含真实写入 + 限流
 node /tmp/jtools/probe-guestbook.mjs with-env      # 20 条
 node /tmp/jtools/probe-guestbook.mjs without-env   # 20 条
 node /tmp/jtools/probe-guestbook-errors.mjs        # 20 条，把每种后端响应都打一遍
+
+# ⑥ 环境变量核对脚本本身（11 条用例 × 2 断言 = 22 条）
+node /tmp/jtools/test-check-env.mjs
+
+# ⑦ 「脏输入 → 运行时被 trim 干净」的端到端
+node /tmp/jtools/build-dirty.mjs                    # 用带 CRLF 的 key 构建到 /tmp/jtools/dist-dirty
+NODE_PATH=$PWD/node_modules node /tmp/jtools/probe-local-trim.mjs /tmp/jtools/dist-dirty   # 6 条
+NODE_PATH=$PWD/node_modules node /tmp/jtools/probe-crlf-key.mjs   # 6 条，打线上接口（零副作用）
 ```
 
 ---

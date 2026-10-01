@@ -287,8 +287,33 @@ export const footer = {
  * 原站填的是 `https://bit.inthesea.top/api/submit-comment`（站长自己的服务，不适用本项目）。
  * 提交成功后统一等 3 秒跳回首页 —— 与原站一致。
  */
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || ''
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || ''
+/**
+ * ⚠️ 末尾那个 `.trim()` 不是多余的防御，别删。
+ *
+ * 2026-10-01 的实例：从剪贴板往 GitHub Variables 里粘 anon key 时尾巴上带了
+ * 一个 CRLF，变量里存的实际是 **210** 个字符（正确是 208）。Vite 把原值
+ * **静态替换**进 bundle，于是每个访客拿到的 key 都带着尾随换行。
+ *
+ * 那次没出事，纯属规范兜着 —— Fetch 要求 header 值先做归一化、剥掉首尾的
+ * HTTP 空白（SP / HT / CR / LF），所以浏览器真正发出去的是干净的 208。
+ * 实测（真 Chromium，2026-10-01）：
+ *   `new Headers([['apikey', 脏值]])` 取回来就是 208，且脏值 / 干净值打
+ *   PostgREST 的结果逐字节一致（都是 HTTP 200 + invalid_email）。
+ *
+ * 但那是运气，不是设计。换个客户端（`curl -H "apikey: …"`、别的运行时）
+ * 就可能 401；更糟的是**中间**夹空白 —— 那个 `.trim()` 救不了，
+ * `new Headers({ apikey: '…\n…' })` 会直接抛
+ * `TypeError: Failed to construct 'Headers': Invalid value`，每次提交都失败，
+ * 而本地变量是干净的、永远复现不出来。
+ *
+ * 所以两层一起上：
+ *   ① 这里的 `.trim()` —— 在入口把「输入带首尾空白」吸收掉（任何环境都可能有）
+ *   ② `scripts/check-supabase-env.mjs` —— 构建期判断**变量本身**对不对：
+ *      首尾空白只警告（有 ① 兜着，不该为一个不影响功能的问题把构建搞红），
+ *      中间空白 / role 不是 anon / ref 对不上 / 已过期 直接让构建红。
+ */
+const SUPABASE_URL = (import.meta.env.VITE_SUPABASE_URL || '').trim()
+const SUPABASE_ANON_KEY = (import.meta.env.VITE_SUPABASE_ANON_KEY || '').trim()
 
 /**
  * **两个都要有**才算配置好。

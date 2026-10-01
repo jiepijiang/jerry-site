@@ -79,24 +79,45 @@ jobs:
       # 变量没注入不会报错，只会静默地把 endpoint 变成空串 ——
       # 线上表现是「留言板点了没反应（其实走了假成功）」，本地复现不出来。
       # 所以这里必须自己检查一遍产物。
+      #
+      # 分两层，不能互相替代：
+      #   ① 变量**本身**对不对 —— 值有没有空白、role 是不是 anon、ref 对不对得上
+      #   ② 产物里到底有没有 —— 变量对了也可能因为变量名拼错而根本没生效
       - name: 核对 Supabase 配置是否已注入
         run: |
+          # ① 这一步以前是 `echo "…（anon key 长度 ${#KEY}）"`。
+          #    那只是**打印**，不是**判断**：2026-10-01 变量里粘进了尾随 CRLF
+          #    （208 → 210 字符），这行老老实实把 210 打出来，然后放行 ——
+          #    于是带换行的 key 被烧进了线上 bundle。现在换成真脚本，
+          #    并且顺带加上「role 必须是 anon」这条（防 service_role 被贴进来）。
+          npm run check:env
+
+          # ② 产物核对
           if [ -z "$VITE_SUPABASE_URL" ] || [ -z "$VITE_SUPABASE_ANON_KEY" ]; then
-            echo "::warning title=未注入 Supabase 配置::留言板将退回本地假成功（不会真正写入）。请在 Settings → Secrets and variables → Actions → Variables 里配置 VITE_SUPABASE_URL 与 VITE_SUPABASE_ANON_KEY。"
+            echo "· 未配置 Supabase，跳过产物核对（留言板走本地假成功）"
+            exit 0
+          fi
+
+          if grep -rqF "$VITE_SUPABASE_URL" dist/assets/; then
+            echo "✅ 产物里已包含 Supabase URL"
           else
-            echo "✅ 已注入 Supabase：$VITE_SUPABASE_URL（anon key 长度 ${#VITE_SUPABASE_ANON_KEY}）"
-            if grep -rqF "$VITE_SUPABASE_URL" dist/assets/; then
-              echo "✅ 产物里已包含 Supabase URL"
-            else
-              echo "::error title=注入失败::环境变量给了，但 dist/assets/ 里找不到它 —— 检查变量名是不是拼错了（必须是 VITE_ 前缀）。"
-              exit 1
-            fi
-            if grep -rqF "rpc/post_guestbook_message" dist/assets/; then
-              echo "✅ 产物里已包含留言板 RPC 路径"
-            else
-              echo "::error title=留言板接线丢失::产物里找不到 rpc/post_guestbook_message，site.js 的 guestbook 配置可能被改坏了。"
-              exit 1
-            fi
+            echo "::error title=注入失败::环境变量给了，但 dist/assets/ 里找不到它 —— 检查变量名是不是拼错了（必须是 VITE_ 前缀）。"
+            exit 1
+          fi
+
+          if grep -rqF "rpc/post_guestbook_message" dist/assets/; then
+            echo "✅ 产物里已包含留言板 RPC 路径"
+          else
+            echo "::error title=留言板接线丢失::产物里找不到 rpc/post_guestbook_message，site.js 的 guestbook 配置可能被改坏了。"
+            exit 1
+          fi
+
+          # service_role 绝不能出现在前端产物里 —— 它会绕过 RLS，被公开给每个访客。
+          # ① 已经从 JWT 的 role 字段判过一次，这里对**产物本身**再兜一次：
+          # 防的是「有人把 key 硬编码进源码」这条不同的路径。
+          if grep -rqF "service_role" dist/assets/; then
+            echo "::error title=产物里出现了 service_role::它会绕过 RLS 并被公开给每个访客，立刻去 Supabase 后台轮换这个 key。"
+            exit 1
           fi
         env:
           VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
