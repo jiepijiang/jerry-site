@@ -67,7 +67,40 @@ jobs:
           fi
 
       - name: 构建
+        env:
+          # 留言板后端（Supabase）。用 vars 不是 secrets —— anon key 本来就是
+          # 公开的、会被打进 bundle；service_role 绝不能进这里。
+          # 没配也不报错：site.js 里 endpoint 为空 → 留言板退回本地假成功（控制台留痕）。
+          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY }}
         run: npm run build
+
+      # 构建期核对：Vite 的 import.meta.env.VITE_* 是**静态替换**，
+      # 变量没注入不会报错，只会静默地把 endpoint 变成空串 ——
+      # 线上表现是「留言板点了没反应（其实走了假成功）」，本地复现不出来。
+      # 所以这里必须自己检查一遍产物。
+      - name: 核对 Supabase 配置是否已注入
+        run: |
+          if [ -z "$VITE_SUPABASE_URL" ] || [ -z "$VITE_SUPABASE_ANON_KEY" ]; then
+            echo "::warning title=未注入 Supabase 配置::留言板将退回本地假成功（不会真正写入）。请在 Settings → Secrets and variables → Actions → Variables 里配置 VITE_SUPABASE_URL 与 VITE_SUPABASE_ANON_KEY。"
+          else
+            echo "✅ 已注入 Supabase：$VITE_SUPABASE_URL（anon key 长度 ${#VITE_SUPABASE_ANON_KEY}）"
+            if grep -rqF "$VITE_SUPABASE_URL" dist/assets/; then
+              echo "✅ 产物里已包含 Supabase URL"
+            else
+              echo "::error title=注入失败::环境变量给了，但 dist/assets/ 里找不到它 —— 检查变量名是不是拼错了（必须是 VITE_ 前缀）。"
+              exit 1
+            fi
+            if grep -rqF "rpc/post_guestbook_message" dist/assets/; then
+              echo "✅ 产物里已包含留言板 RPC 路径"
+            else
+              echo "::error title=留言板接线丢失::产物里找不到 rpc/post_guestbook_message，site.js 的 guestbook 配置可能被改坏了。"
+              exit 1
+            fi
+          fi
+        env:
+          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY }}
 
       - uses: actions/configure-pages@v6
 

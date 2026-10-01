@@ -85,6 +85,10 @@ npm run preview  # 预览构建产物
 .
 ├── index.html                  # 入口（含首屏 body 内联样式，与原站一致）
 ├── vite.config.js
+├── .env.example                # 复制成 .env.local 填 Supabase 配置（见「留言板」）
+├── supabase/
+│   ├── migrations/001-guestbook.sql   # 留言板的表 + RLS + 写入函数（幂等）
+│   └── README.md                      # 怎么跑、建了什么、自检语句
 ├── public/static/
 │   ├── fonts/                  # Ubuntu（正文）、Pacifico（渐变标题）
 │   ├── img/                    # 头像、背景、项目卡片图标、贪吃蛇贡献图（snake.svg）
@@ -142,13 +146,13 @@ npm run preview  # 预览构建产物
 | `github` | 首屏两块 GitHub 内容：`snake`（贪吃蛇贡献图）+ 最近推送的仓库。**两块数据都在构建期生成**，见下 |
 | `skills` | 技能树 SVG（桌面 / 移动两版）。**由脚本生成**，见下 |
 | `footer` | 备案号（默认留空，见下）与版权 |
+| `guestbook` | 留言板接口。**由构建期环境变量拼出来**（`VITE_SUPABASE_URL` + anon key），见「留言板接的是 Supabase」 |
+| `playlist` | 播放器歌单（`cover` / `src` 填上即可真实播放） |
 
 > **关于 `footer.icp`**：这里原先是复刻对象 xywml.com 的备案号
 > （`蜀ICP备2023008720号-2`），已清空 —— 备案号绑定具体域名与主体，
 > 挂别人的号属于冒用；本站托管在 GitHub Pages（境外），本来也不需要备案。
 > 将来迁回国内主机时把自己的号填回去即可，`SiteFooter.vue` 会处理空值。
-| `guestbook.endpoint` | 留言板接口；留空则走本地成功流程（成功后 3 秒跳回首页，与原站一致） |
-| `playlist` | 播放器歌单（`cover` / `src` 填上即可真实播放） |
 
 ### 时间轴的日期
 
@@ -290,6 +294,81 @@ GITHUB_TOKEN=$(gh auth token) npx generate-snake-animation@3 \
 
 ---
 
+## 留言板接的是 Supabase
+
+留言板是本站**唯一的后端**。SQL 与说明都在 `supabase/`，这里只讲为什么这么做、
+以及接线时最容易踩的地方。
+
+### 为什么是 Supabase
+
+- 留言板本质是「**一个只写的表单**」——页面没有留言列表，提交完就跳回首页。
+  这种场景不值得自己写服务端、管进程、配 CORS。
+- 主站托管在 **GitHub Pages，没有服务端**（纯静态）。任何后端都得另找地方托管。
+- 校验和限流放在**数据库函数**里（`security definer`），客户端改不了 ——
+  比放在前端强得多。
+
+### 三层防线
+
+| 层 | 做什么 |
+| --- | --- |
+| 表 `guestbook_messages` | **RLS 开启且一条策略都不建** → anon 读不到、写不进 |
+| 同一张表 | 再 `revoke all … from anon, authenticated`（与 RLS **互相独立**的兜底） |
+| 函数 `post_guestbook_message` | `security definer`，唯一写入口；服务端校验 + 三重限流 |
+
+> 「两道防线互相独立」是**实测**出来的：把 `enable row level security` 那行拿掉重跑，
+> 「anon 读不到 / 写不进」两条断言**依然是绿的** —— 因为 `revoke` 兜住了。
+> 将来要做「留言墙」，得同时改这两处，并想清楚脱敏（**邮箱绝不能露**）。
+
+三重限流：全站 10 条/分钟、同一 IP 5 条/小时、同一邮箱 3 条/小时。
+边界都是 `>=` —— **第 3 条同邮箱留言放行，第 4 条被拦**。
+
+### ⚠️ 最容易踩的一个坑：Supabase 用 HTTP 200 表达业务失败
+
+`{ok:false, code:'rate_limited'}` 也是 **200**。只看 `res.ok` 的话，
+被限流时页面会显示「**留言发送成功！🎉**」。
+
+`GuestbookView.vue` 里的判据写成 `if (!data || data.ok !== true)` 而不是
+`if (data && data.ok === false)` —— 这是**失败关闭**：
+只有后端**明确说 ok:true** 才算成功。反过来写的话，
+「200 但 body 解析不出」（body 为空、或中间设备塞了一页 HTML）会被判成成功，又是一次谎报。
+
+这条判据是**造红验过**的：改回 `ok === false` 重新构建后，
+探针恰好在「门户劫持」那个用例上报红 2 条，报出来的正是「留言发送成功！🎉」。
+
+### 配置
+
+| 位置 | 变量 | 说明 |
+| --- | --- | --- |
+| 本地 `.env.local` | `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` | 从 `.env.example` 复制 |
+| CI 仓库 Variables | 同上 | 用 `vars` 不是 `secrets`；`service_role` 绝不能进 |
+
+**两个都要配**才算配置好（只配 URL 会 401，不如当作没配）。
+都没配时 `endpoint` 为空 → 退回本地假成功，**但控制台会打 `console.warn` 留痕** ——
+静默的假成功比直接报错更坑。
+
+`deploy.yml` 里有一个「核对 Supabase 配置是否已注入」的步骤：
+缺变量 → `::warning`；给了变量但产物里 grep 不到 URL 或 RPC 路径 → `::error` 直接失败。
+（Vite 的 `import.meta.env.VITE_*` 是**构建期静态替换**，变量没注入不会报错，
+只会静默地把 endpoint 变成空串，线上表现是「点了没反应」——本地复现不出来。）
+
+### 怎么验
+
+```bash
+# SQL 语义（真 Postgres，WASM 版，不需要连 Supabase）
+cd /Users/jiepijiang/.workbuddy-ai/binaries/node/workspace
+NODE_PATH=$PWD/node_modules node /tmp/jtools/run-guestbook-sql.mjs           # 32 条
+NODE_PATH=$PWD/node_modules node /tmp/jtools/run-guestbook-sql.mjs --break=email-rate
+NODE_PATH=$PWD/node_modules node /tmp/jtools/run-guestbook-sql.mjs --break=ip-hash
+NODE_PATH=$PWD/node_modules node /tmp/jtools/run-guestbook-sql.mjs --break=rls
+
+# 前端（真 Chromium）
+node /tmp/jtools/probe-guestbook.mjs with-env      # 20 条
+node /tmp/jtools/probe-guestbook.mjs without-env   # 20 条
+node /tmp/jtools/probe-guestbook-errors.mjs        # 20 条，把每种后端响应都打一遍
+```
+
+---
+
 ## 复刻保真度
 
 比对方法：用 Playwright 分别加载原站与本地项目，
@@ -382,7 +461,9 @@ GITHUB_TOKEN=$(gh auth token) npx generate-snake-animation@3 \
    顺带修了歌词居中的偏差：字号是 0.3s 过渡，切换瞬间量到的 `offsetTop` 还是旧的，
    按那时的布局居中会差几十像素，现在等 `transitionend` 落定后再量一次。
 9. **留言板接口**：原站提交到 `https://bit.inthesea.top/api/submit-comment`（站长自己的服务）。
-   本项目 `guestbook.endpoint` 默认留空，走本地成功流程，便于直接预览。
+   本项目改接 **Supabase**（一个 Postgres + 一个 RPC 函数，见 `supabase/`），
+   两个环境变量没配时退回本地成功流程（**并在控制台留痕**），便于直接预览。
+   详见下文「留言板接的是 Supabase」。
 10. **Service Worker**：原站注册了 `sw.js`，本项目未引入（Vite 构建下意义不大）。
 11. **Pacifico 字体换成完整子集**：仓库里原先那份 `Pacifico-Regular.ttf` 只有 13 KB，
     是照着原站用到的字符裁的子集，**缺 J 等一大批字形**（`ABCDEFGIJKLMNPQRTUVXYZ…`）。
@@ -394,6 +475,12 @@ GITHUB_TOKEN=$(gh auth token) npx generate-snake-animation@3 \
     而且本站托管在 GitHub Pages（境外）本来也不需要备案 —— 现已清空。
     将来迁回国内主机时，把自己的号填进 `site.js` 的 `footer.icp` 即可
     （`SiteFooter.vue` 会自动处理空 / 非空两种渲染）。
+13. **留言内容加了 1000 字上限**：原站只校验了下限（5 字），没有上限。
+    但接后端之后必须有一个，否则一次能塞进几 MB 正文 ——
+    所以 `GuestbookView.vue` 加了 `MAX_CONTENT_LENGTH = 1000`，
+    与 SQL 里 `post_guestbook_message` 的常量**逐字对齐**，并挂在 textarea 的 `maxlength` 上
+    （打字时就被挡住，而不是提交后才报错）。
+    两边不一致会出现「前端放行、后端拒绝」这种最难解释的现象，改一处务必改另一处。
 
 ---
 

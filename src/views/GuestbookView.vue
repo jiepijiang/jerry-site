@@ -8,6 +8,14 @@ import { theme, toggleTheme } from '@/composables/useTheme'
 /* 与原站一致的校验规则（原站写在 chat.html 内联脚本里，常量逐个对齐） */
 const EMAIL_REGEX = /^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,6}$/
 const MIN_CONTENT_LENGTH = 5
+/**
+ * 上限是**本项目新加的**，原站没有。
+ * 理由：服务端（`post_guestbook_message`）必须有个上限来防滥用，两边不一致的话
+ * 会出现「前端让发、后端拒绝」这种最难解释的现象。所以这里同步加上，
+ * 并在 textarea 上挂 `maxlength`，让用户在**打字时**就被挡住，而不是提交后才报错。
+ * 见 README「已知差异」。
+ */
+const MAX_CONTENT_LENGTH = 1000
 const MAX_EMAIL_LENGTH = 254
 const MAX_LOCAL_LENGTH = 64
 const MAX_DOMAIN_LENGTH = 255
@@ -65,6 +73,7 @@ function validateContent(value) {
   if (!value || typeof value !== 'string') return { valid: false, message: '留言内容不能为空' }
   const v = value.trim()
   if (v.length < MIN_CONTENT_LENGTH) return { valid: false, message: `留言内容至少需要${MIN_CONTENT_LENGTH}个字符` }
+  if (v.length > MAX_CONTENT_LENGTH) return { valid: false, message: `留言内容最多${MAX_CONTENT_LENGTH}个字符` }
   return { valid: true }
 }
 
@@ -128,37 +137,91 @@ function validateForm() {
   return emailOk && contentOk
 }
 
+/**
+ * 业务失败。**必须和网络错误分开** ——
+ * Supabase 的 RPC 用 HTTP 200 表达业务失败，所以「限流」根本不会抛 fetch 异常，
+ * 只能靠 body 里的 `ok:false` 认出来。用一个自定义 Error 把 code 带出去，
+ * 下面的文案映射就能按 code 查表，而不是去字符串里 includes('429') 那种脆匹配。
+ */
+class GuestbookError extends Error {
+  constructor(code) {
+    super(code)
+    this.name = 'GuestbookError'
+    this.code = code
+  }
+}
+
+/** 与 supabase/migrations/001-guestbook.sql 里返回的 code 一一对应 */
+const ERROR_TEXT = {
+  rate_limited: '请求过于频繁，请稍后再试！',
+  invalid_email: '邮箱格式不正确，请检查后重试！',
+  invalid_content: `留言内容不合规，请检查后重试（${MIN_CONTENT_LENGTH}~${MAX_CONTENT_LENGTH} 字）！`,
+  network: '网络连接失败，请检查网络后重试！',
+  server: '服务器开小差了，请稍后重试！',
+}
+
+function mapError(e) {
+  if (e instanceof GuestbookError) return ERROR_TEXT[e.code] || ERROR_TEXT.server
+  const m = String(e?.message || '')
+  if (m.includes('Failed to fetch') || m.includes('NetworkError')) return ERROR_TEXT.network
+  if (m.includes('429')) return ERROR_TEXT.rate_limited
+  if (m.includes('400')) return '请求格式错误，请检查输入内容！'
+  return '发送失败，请稍后重试！'
+}
+
+function finishSuccess() {
+  showToast('留言发送成功！🎉', 'success')
+  resetForm()
+  /* 原站成功后 3 秒跳回首页 */
+  redirectTimer = setTimeout(() => router.push('/'), SUCCESS_REDIRECT_DELAY)
+}
+
 async function onSubmit() {
   if (!validateForm()) return
 
   loading.value = true
   try {
-    const payload = { email: email.value.trim(), content: content.value.trim() }
-
-    if (guestbook.endpoint) {
-      const res = await fetch(guestbook.endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
-      if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`)
-      await res.json().catch(() => ({}))
-    } else {
-      // 未配置后端时走本地成功流程，方便直接预览
+    if (!guestbook.endpoint) {
+      /* 未配置后端：走本地成功流程，方便直接预览。
+         但**必须在控制台留痕** —— 静默的假成功会让人以为留言真发出去了，
+         这种「看着好了」比直接报错更坑。 */
+      console.warn(
+        '[guestbook] 未配置 Supabase（VITE_SUPABASE_URL 为空），' +
+          '本次提交**没有真的发出去**，只走了本地假成功流程。',
+      )
       await new Promise((r) => setTimeout(r, 600))
+      finishSuccess()
+      return
     }
 
-    showToast('留言发送成功！🎉', 'success')
-    resetForm()
-    /* 原站成功后 3 秒跳回首页 */
-    redirectTimer = setTimeout(() => router.push('/'), SUCCESS_REDIRECT_DELAY)
+    const res = await fetch(guestbook.endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...guestbook.headers },
+      /* 参数名要和 SQL 里的函数签名一致（p_email / p_content），
+         PostgREST 是按名字匹配的，写错会 404 而不是 400。 */
+      body: JSON.stringify({
+        p_email: email.value.trim(),
+        p_content: content.value.trim(),
+      }),
+    })
+
+    const data = await res.json().catch(() => null)
+
+    if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`)
+
+    /* ⚠️ 这一行是整段的关键，而且**判据方向不能反**。
+        PostgREST 用 200 表达业务失败：`{ok:false, code:'rate_limited'}` 也是 200。
+        少了检查 → 被限流时页面显示「留言发送成功！🎉」。
+
+        为什么写成 `ok !== true` 而不是 `ok === false`：
+        后者是「只有明确说失败才算失败」，那么 **200 + 解析不出的 body**
+        （body 为空、或中间设备塞了一页 HTML）会被判成成功 —— 又是一次谎报。
+        反过来写就是**失败关闭**：只有后端**明确说 ok:true** 才算成功。 */
+    if (!data || data.ok !== true) throw new GuestbookError(data?.code || 'server')
+
+    finishSuccess()
   } catch (e) {
-    let msg = '发送失败，请稍后重试！'
-    const m = String(e?.message || '')
-    if (m.includes('Failed to fetch')) msg = '网络连接失败，请检查网络后重试！'
-    else if (m.includes('400')) msg = '请求格式错误，请检查输入内容！'
-    else if (m.includes('429')) msg = '请求过于频繁，请稍后再试！'
-    showToast(msg, 'error')
+    showToast(mapError(e), 'error')
   } finally {
     loading.value = false
   }
@@ -252,6 +315,7 @@ onBeforeUnmount(() => {
               name="content"
               placeholder="请输入您想对站长说的话，至少5个字符"
               minlength="5"
+              :maxlength="MAX_CONTENT_LENGTH"
               required
               aria-describedby="content-error"
               @input="onInput('content')"

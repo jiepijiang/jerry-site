@@ -268,12 +268,45 @@ export const footer = {
 
 /**
  * 留言板
- * endpoint 留空时，提交会走本地成功流程（方便直接预览）；填上你的接口地址即可真正发送。
+ * ---------------------------------------------------------------------------
+ * 后端是 Supabase 的一个 RPC（`post_guestbook_message`），SQL 见
+ * `supabase/migrations/001-guestbook.sql`，接线说明见 `supabase/README.md`。
+ *
+ * 地址和密钥都来自**构建期环境变量**，不写死在源码里：
+ *   VITE_SUPABASE_URL        https://<ref>.supabase.co
+ *   VITE_SUPABASE_ANON_KEY   anon key
+ * 好处是换项目不用改代码，而且这两个值本地 / CI 用同一套写法（CI 里由
+ * `deploy.yml` 从仓库 Variables 注入，并做构建期核对）。
+ *
+ * ⚠️ anon key **进 bundle 是设计如此**（它本来就是给浏览器用的公开凭据），
+ *    真正拦权限的是表上的 RLS 和函数里的限流。**但 `service_role` 绝不能进前端。**
+ *
+ * 两个变量都没配时 `endpoint` 为空 → 提交走本地成功流程（方便直接预览），
+ * 但 `GuestbookView.vue` 会打一条 console.warn 留痕，不做静默假成功。
+ *
  * 原站填的是 `https://bit.inthesea.top/api/submit-comment`（站长自己的服务，不适用本项目）。
  * 提交成功后统一等 3 秒跳回首页 —— 与原站一致。
  */
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || ''
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || ''
+
+/**
+ * **两个都要有**才算配置好。
+ * 只配 URL 不配 key 的话请求会 401 —— 那还不如当作「没配」，
+ * 至少行为是可预期的（退回本地假成功 + 控制台留痕），而不是「每次提交都报错」。
+ * `deploy.yml` 里那个核对步骤也是按「两个都缺 / 缺一个」来报警的。
+ */
+const SUPABASE_READY = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY)
+
 export const guestbook = {
-  endpoint: '',
+  endpoint: SUPABASE_READY ? `${SUPABASE_URL}/rest/v1/rpc/post_guestbook_message` : '',
+  /**
+   * Supabase 的 PostgREST 要求这两个头。
+   * anon key 放 `apikey` 是走网关鉴权，`Authorization` 是走角色 —— 两个都要。
+   */
+  headers: SUPABASE_READY
+    ? { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` }
+    : {},
 }
 
 /**
