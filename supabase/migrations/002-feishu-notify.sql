@@ -265,30 +265,49 @@ $$;
 
 revoke all on function public.guestbook_notify_status() from public, anon, authenticated;
 
-
 -- ============================================================================
--- 接下来你要做的三步
+-- ⚠️ 配 webhook 不在这个文件里 —— 请跑 003-feishu-config.sql
 -- ============================================================================
--- 【1】在飞书里建一个自定义机器人，拿到 webhook URL
---     · 手机/电脑飞书 → 新建一个群（可以只有你自己，也可以拉上自己）
---     · 群设置 → 群机器人 → 添加机器人 → **自定义机器人**
---     · 安全设置推荐选 **「自定义关键词」**，填 `留言` 两个字（卡片标题里有「新的留言」，
---       所以一定含关键词）。这样**不需要签名**，配置最简单。
---       如果你想用「签名校验」，就把密钥填进下面的 feishu_secret。
---     · 复制那条 `https://open.feishu.cn/open-apis/bot/v2/hook/xxxxx` 的地址
 --
--- 【2】把 URL 填进来（在 SQL Editor 里执行，把 <你的URL> 换掉）
---     insert into public.app_config (key, value) values
---       ('feishu_webhook_url', '<你的URL>'),
---       ('feishu_secret', '')            -- 用「关键词」方式就留空
---     on conflict (key) do update
---       set value = excluded.value, updated_at = now();
+-- 这个文件的第一版把「配置步骤」写成了下面这样的注释：
 --
--- 【3】发一条测试，手机上确认收到
---     select public.guestbook_notify_test();          -- 期望 {"ok": true, ...}
---     -- 等 3 秒，再看结果（HTTP 200 且 error_msg 为 null 才算真的到了）
---     select * from public.guestbook_notify_status();
+--     -- 【2】把 URL 填进来（在 SQL Editor 里执行，把 <你的URL> 换掉）
+--     --     insert into public.app_config (key, value) values
+--     --       ('feishu_webhook_url', '<你的URL>'), ...
 --
---     如果 status_code 是 400 且 content 里有 "sign" / "keyword" 字样，
---     说明安全设置和你的配置对不上（选了关键词却没写、或选了签名却没填 secret）。
+-- 结果：迁移本体跑了（`Success. No rows returned`），注释里的 insert 没人跑 ——
+-- 注释对执行者是隐形的，它既不会被跑、也不会报错。
+-- app_config 因此一直是空的 → send_feishu_card 一进来就早退、一个请求都不发，
+-- 而上面那句「通知失败不影响留言」的 exception 守卫又让错误彻底静默。
+-- 表现就是：飞书没收到 + net._http_response 0 行 + 看不出哪里错了。
+--
+-- 所以配置改成了**可执行的**，在 003-feishu-config.sql 里：
+--
+--   -- ① 配一行（幂等，可重复跑）
+--   select public.guestbook_configure_feishu(
+--     'https://open.feishu.cn/open-apis/bot/v2/hook/你的TOKEN');
+--
+--   -- ② 确认配置生效（永远返回 1 行，含「下一步该做什么」）
+--   select * from public.guestbook_feishu_status();
+--
+--   -- ③ 发一条测试，手机上确认收到
+--   select public.guestbook_notify_test();
+--   -- 等 3 秒看结果（HTTP 200 且 last_error 为 null 才算真的到了）
+--   select * from public.guestbook_notify_status();
+--
+-- 建机器人那步（在飞书里操作，SQL 代替不了）：
+--   · 手机/电脑飞书 → 新建一个群 → 群设置 → 群机器人 → 添加机器人 → 自定义机器人
+--   · 安全设置推荐「自定义关键词」，填「留言」两个字（卡片标题里有「新的留言」，
+--     所以一定含关键词）—— 这样不需要签名，配置最简单。
+--     想用「签名校验」的话，把密钥作为第二个参数传给 guestbook_configure_feishu。
+--   · 复制那条 https://open.feishu.cn/open-apis/bot/v2/hook/xxxxx 的地址
+--
+-- 排查顺序（**先跑这个，别猜**）：
+--   select * from public.guestbook_feishu_status();
+--   · configured = false                  → 就是没配，按上面 ① 配一行
+--   · configured 但 response_rows = 0     → 配了但还没发过，跑 ③
+--   · last_http_status = 400              → 看 last_content（飞书原话，sign/keyword 相关）
+--   · last_error 有值、last_http_status 为空 → 传输层失败（出网/代理），不是飞书拒收
+--   ⚠️ pg_net 的 error_msg **只在传输层失败时**才有值；飞书返回 400 时它是 null，
+--      原因在 content 列里。这两列 003 都给你了。
 -- ============================================================================

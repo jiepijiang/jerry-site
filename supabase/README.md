@@ -17,6 +17,7 @@
 supabase/
   migrations/001-guestbook.sql      ← 表 + RLS + 写入函数（幂等，可重复执行）
   migrations/002-feishu-notify.sql  ← 新留言 → 飞书群机器人通知（可选，不配就是 no-op）
+  migrations/003-feishu-config.sql  ← **配 webhook + 诊断**（可执行，别再手抄 SQL）
   README.md                         ← 本文件
 ```
 
@@ -28,6 +29,14 @@ supabase/
 `supabase db push` 那条路走不通。SQL 是幂等的，跑第二遍不会报错、也不会重复建。
 
 跑完把文件末尾「跑完后的自检」那几条单独选中执行一遍 —— 那是验收，别跳过。
+
+> ⚠️ **配置步骤不要只写在注释里。**
+> 002 的第一版把「填 webhook URL」的 `insert` 写成了文件末尾的注释，
+> 结果迁移本体跑了（提示 `Success. No rows returned`），注释里的 insert 没人跑 ——
+> **注释对执行者是隐形的：它既不会被跑，也不会报错。**
+> 表现是「飞书没收到 + `net._http_response` 0 行 + 看不出哪里错了」。
+> 所以 003 把配置做成了**可执行的函数**：跑一条 `select` 就完事，跑完有明确返回。
+> 凡是「需要人来执行」的东西，就必须是一条能执行的语句，不能是注释。
 
 ## 它建了什么
 
@@ -111,40 +120,64 @@ supabase/
 | `send_feishu_card(card)` | POST 出去。**没配就静默返回 null** |
 | `notify_guestbook_message()` + 触发器 | `after insert` 自动发 |
 | `guestbook_notify_test()` | 发一条测试卡片（配好之后先跑这个） |
-| `guestbook_notify_status()` | 看最近 10 次通知的结果 |
+| `guestbook_notify_status()` | 看最近 10 次通知的结果。⚠️ **没发过就是 0 行** |
 
-### 三步接上
+### 接上：三步，都是可执行语句
 
-1. **建机器人**：飞书 → 新建一个群（可以只有你自己）→ 群设置 → 群机器人 →
-   添加机器人 → **自定义机器人**。
-   安全设置推荐 **「自定义关键词」** 填 `留言`（卡片标题是「💬 新的留言」，必然命中）——
-   这样**不需要签名**，最省事。想用签名校验也行，把密钥填进 `feishu_secret`。
-2. **填 URL**：
-   ```sql
-   insert into public.app_config (key, value) values
-     ('feishu_webhook_url', '<你的URL>'),
-     ('feishu_secret', '')          -- 用「关键词」方式就留空
-   on conflict (key) do update set value = excluded.value, updated_at = now();
-   ```
-3. **发测试**：
-   ```sql
-   select public.guestbook_notify_test();     -- 期望 {"ok": true, "request_id": ...}
-   -- 等 3 秒（pg_net 是异步的，事务提交后才真发）
-   select * from public.guestbook_notify_status();
-   ```
-   `status_code = 200` 且 `error_msg` 为 null 才算真的到了。
-   400 且 content 里有 `sign` / `keyword` 字样 = 安全设置和配置对不上。
+**① 建机器人**（在飞书里操作，SQL 代替不了）：飞书 → 新建一个群（可以只有你自己）→
+群设置 → 群机器人 → 添加机器人 → **自定义机器人**。
+安全设置推荐 **「自定义关键词」** 填 `留言`（卡片标题是「💬 新的留言」，必然命中）——
+这样**不需要签名**，最省事。想用签名校验也行，密钥作为第二个参数传进去。
+
+**② 配一行**（`003-feishu-config.sql` 提供的函数，幂等、可重复跑）：
+
+```sql
+select public.guestbook_configure_feishu(
+  'https://open.feishu.cn/open-apis/bot/v2/hook/你的TOKEN');
+
+-- 用签名校验的写法：
+-- select public.guestbook_configure_feishu('https://open.feishu.cn/...', '你的密钥');
+```
+
+返回 `{"ok": true, "webhook_masked": ".../hook/****-def", "secret_set": false, "next": "..."}`。
+URL 格式不对会返回 `{"ok": false, "code": "invalid_url"}` 并且**不写坏已有配置**。
+
+**③ 确认 + 发测试**：
+
+```sql
+-- 排查飞书通知，第一件事跑这个 —— 它**永远返回 1 行**
+select * from public.guestbook_feishu_status();
+
+select public.guestbook_notify_test();          -- 期望 {"ok": true, ...}
+-- 等 3 秒（pg_net 是异步的，事务提交后才真发）
+select * from public.guestbook_notify_status();  -- HTTP 200 才算真的到了
+```
+
+`guestbook_feishu_status()` 的输出就是一张「下一步该做什么」：
+
+| 看到什么 | 说明 |
+| --- | --- |
+| `configured = false` | 没配，按上面 ② 配一行（`hint` 列里直接写着那条语句） |
+| `configured` 但 `response_rows = 0` | 配了但还没发过，跑 ③ |
+| `pg_net_installed = false` | 扩展没装，重跑 `002` |
+| `last_http_status = 200` | ✅ 通了 |
+| `last_http_status = 400` | 看 `last_content`（飞书原话：`sign` / `keyword` 相关） |
+| `last_error` 有值、`last_http_status` 为空 | 传输层失败（出网 / 代理），不是飞书拒收 |
 
 ### 两个刻意的设计
 
 - **通知失败绝不拖垮留言。** 触发器里整段发送包在 `exception when others` 里，
   只 `raise warning`。pg_net 没装、webhook 填错、网络不通……
   任何一种都不该让「按下发送留言」失败。**用户看到的成败只该由留言本身决定。**
-  代价是「静默不通知」，所以配了 `guestbook_notify_status()` 来兜底排查。
+  代价是「静默不通知」—— 错误只进 Postgres 日志，客户端完全看不出来。
+  所以配了 `guestbook_feishu_status()` 来兜底：它**永远返回 1 行**，
+  把「没配 / 没发过 / 被拒 / 传输层挂了」四种状态分开，不依赖任何日志。
 - **没配 = 静默 no-op。** 留言照常入库，只是不通知。
   这样这份迁移对「暂时不想开通知」是完全无害的。
+  （但「静默」有个前提：**必须有一个不看日志就能问出状态的地方**，
+  否则「没配」和「配错了」长得一模一样 —— 这一条是踩过坑之后才补的。）
 
-### 两个只有真跑才会发现的坑
+### 三个只有真跑才会发现的坑
 
 1. 🔴 **`'\n'` 不是换行。** Postgres 默认 `standard_conforming_strings = on`，
    普通单引号里的 `\n` 会原样存成「反斜杠 + n」两个字符，
@@ -157,6 +190,13 @@ supabase/
    所以这里写的是 `set search_path = public, extensions`。
    （本地测试也差点漏掉 —— 桩函数原本建在默认 schema，把这个差异掩盖了；
    现在桩也挪进 `extensions`，两边一致。）
+3. 🔴 **`error_msg` 在「飞书拒收」时是 null。**
+   pg_net 的 `error_msg` **只在传输层失败时**才有值（DNS 解析不了 / 连不上 / 超时）；
+   HTTP 400 时它是 null，飞书的原话（`sign match fail` 之类）在 **`content`** 列里。
+   我第一版的诊断只暴露了 `error_msg`，照着提示去查会查到 null。
+   现在 `guestbook_feishu_status()` 两列都给。
+   （**这条是本地测试抓出来的**：桩当时把 400 的原文塞进了 `error_msg`，
+   于是这个错误在本地是绿的 —— 桩不忠实于真环境，就等于测了个假的。）
 
 ## 前端怎么接
 
@@ -210,7 +250,27 @@ NODE_PATH=$PWD/node_modules node /tmp/jtools/run-feishu-sql.mjs --break=narrow-s
 就是为了让「search_path 收窄导致找不到 hmac」这个坑能被测出来。
 第一版桩建在默认 schema，于是测了个假的。
 
-**③ 对真 Supabase 打一遍**（需要 `.env.local`）：
+⚠️ **桩的行为也要和真环境一致**：`net.http_post` 桩在 HTTP 400 时
+**不写 `error_msg`**（真 pg_net 就是如此），飞书的原文放 `content`。
+第一版桩把原文塞进了 `error_msg`，于是「诊断提示你去看 `error_msg`」这个错误在本地是绿的。
+
+**③ 配置 + 诊断（`003`）** —— 断言 52 条，其中第一条就是本轮的回归点
+（「没配时诊断必须仍然返回 1 行」）：
+
+```bash
+NODE_PATH=$PWD/node_modules node /tmp/jtools/run-feishu-config-sql.mjs
+NODE_PATH=$PWD/node_modules node /tmp/jtools/run-feishu-config-sql.mjs --break=status-zero-rows  # 红 8
+NODE_PATH=$PWD/node_modules node /tmp/jtools/run-feishu-config-sql.mjs --break=no-validate       # 红 3
+NODE_PATH=$PWD/node_modules node /tmp/jtools/run-feishu-config-sql.mjs --break=no-mask           # 红 2
+NODE_PATH=$PWD/node_modules node /tmp/jtools/run-feishu-config-sql.mjs --break=no-revoke         # 红 3
+NODE_PATH=$PWD/node_modules node /tmp/jtools/run-feishu-config-sql.mjs --break=hint-always-ok    # 红 1
+```
+
+桩 SQL 单独放在 `/tmp/jtools/stubs-feishu.sql` —— 不写在 JS 模板字符串里，
+因为 SQL 注释里出现反引号会把 JS 模板字符串截断，报出来的是个指向注释文字的
+`SyntaxError`，很难一眼看出根因（这个坑踩过两次）。
+
+**④ 对真 Supabase 打一遍**（需要 `.env.local`）：
 
 ```bash
 node /tmp/jtools/probe-rpc-live.mjs           # 只读：函数在不在、校验分支对不对、anon 能不能直连

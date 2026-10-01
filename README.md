@@ -89,6 +89,7 @@ npm run preview  # 预览构建产物
 ├── supabase/
 │   ├── migrations/001-guestbook.sql      # 留言板的表 + RLS + 写入函数（幂等）
 │   ├── migrations/002-feishu-notify.sql  # 新留言 → 飞书群机器人通知（不配就是 no-op）
+│   ├── migrations/003-feishu-config.sql  # 配 webhook + 诊断（可执行，别手抄 SQL）
 │   └── README.md                         # 怎么跑、建了什么、自检语句
 ├── public/static/
 │   ├── fonts/                  # Ubuntu（正文）、Pacifico（渐变标题）
@@ -365,13 +366,23 @@ GITHUB_TOKEN=$(gh auth token) npx generate-snake-animation@3 \
 - **通知失败绝不拖垮留言**：整段发送包在 `exception when others` 里，只 `raise warning`。
   pg_net 没装 / webhook 填错 / 网络不通，都不该让「按下发送留言」失败。
 - **没配 = 静默 no-op**：留言照常入库，只是不通知。这份迁移不开也无害。
+  代价是「配错了也看不出来」，所以 `003-feishu-config.sql` 补了一个**永远返回 1 行**的
+  `guestbook_feishu_status()` —— 不看日志就能问出「到底配没配、发没发出去、为什么被拒」。
 
-配置三步（建机器人 → 填 URL → `select guestbook_notify_test()`）见 `supabase/README.md`。
+配置三步（建机器人 → 配一行 → `select guestbook_notify_test()`）见 `supabase/README.md`。
 
-> ⚠️ 里面有两个**只有真跑才会发现**的坑，都写在 `supabase/README.md` 里了：
+> ⚠️ **配置步骤不能只写成注释。** 002 的第一版把「填 webhook URL」的 `insert`
+> 写在文件末尾的注释里，结果迁移本体跑了、注释没人跑，`app_config` 一直是空的 →
+> 一个请求都不发、还不报错。所以 003 把配置做成了可执行函数：
+> `select public.guestbook_configure_feishu('<URL>')`，幂等、跑完有明确返回。
+> **凡是「需要人来执行」的东西，就必须是一条能执行的语句。**
+
+> ⚠️ 里面有三个**只有真跑才会发现**的坑，都写在 `supabase/README.md` 里了：
 > ① Postgres 的 `'\n'` 不是换行（要写 `E'...\n'`）；
 > ② `set search_path = public` 会让 `extensions` 里的 `hmac()` 找不到 ——
-> 只在「开了签名校验」时才炸，不配 secret 的项目永远发现不了。
+> 只在「开了签名校验」时才炸，不配 secret 的项目永远发现不了；
+> ③ pg_net 的 `error_msg` 在「飞书拒收」时是 null，原因在 `content` 列 ——
+> 照着「看 error_msg」去查只会看到 null。
 
 ### 怎么验
 
@@ -391,11 +402,19 @@ NODE_PATH=$PWD/node_modules node /tmp/jtools/run-feishu-sql.mjs --break=no-confi
 NODE_PATH=$PWD/node_modules node /tmp/jtools/run-feishu-sql.mjs --break=sign-key
 NODE_PATH=$PWD/node_modules node /tmp/jtools/run-feishu-sql.mjs --break=narrow-search-path
 
-# ③ 对真 Supabase 打一遍（需要 .env.local）
+# ③ 配置 + 诊断（含「没配时诊断仍要返回 1 行」这条回归）
+NODE_PATH=$PWD/node_modules node /tmp/jtools/run-feishu-config-sql.mjs   # 52 条
+NODE_PATH=$PWD/node_modules node /tmp/jtools/run-feishu-config-sql.mjs --break=status-zero-rows  # 红 8
+NODE_PATH=$PWD/node_modules node /tmp/jtools/run-feishu-config-sql.mjs --break=no-validate       # 红 3
+NODE_PATH=$PWD/node_modules node /tmp/jtools/run-feishu-config-sql.mjs --break=no-mask           # 红 2
+NODE_PATH=$PWD/node_modules node /tmp/jtools/run-feishu-config-sql.mjs --break=no-revoke         # 红 3
+NODE_PATH=$PWD/node_modules node /tmp/jtools/run-feishu-config-sql.mjs --break=hint-always-ok    # 红 1
+
+# ④ 对真 Supabase 打一遍（需要 .env.local）
 node /tmp/jtools/probe-rpc-live.mjs           # 只读：11 条
 node /tmp/jtools/probe-rpc-live.mjs --write   # 含真实写入 + 限流
 
-# ④ 前端（真 Chromium）
+# ⑤ 前端（真 Chromium）
 node /tmp/jtools/probe-guestbook.mjs with-env      # 20 条
 node /tmp/jtools/probe-guestbook.mjs without-env   # 20 条
 node /tmp/jtools/probe-guestbook-errors.mjs        # 20 条，把每种后端响应都打一遍
