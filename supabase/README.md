@@ -121,6 +121,39 @@ supabase/
 | `notify_guestbook_message()` + 触发器 | `after insert` 自动发 |
 | `guestbook_notify_test()` | 发一条测试卡片（配好之后先跑这个） |
 | `guestbook_notify_status()` | 看最近 10 次通知的结果。⚠️ **没发过就是 0 行** |
+| `fmt_bj_ts(ts)` | 把 `timestamptz` 格式化成**北京时间**的文本（见下） |
+
+### 🔴 时间为什么是「文本」而不是 `timestamptz`
+
+Supabase 的 SQL Editor 按 **UTC** 显示 `timestamptz`，而且带 6 位微秒：
+
+```
+2026-10-01 08:54:32.887717+00     ← 这一刻北京时间其实是 16:54
+```
+
+这些 status 函数的输出**就是给人看的**，格式该按人的习惯来、而不是按存储类型来。
+所以两个 status 函数的「时间列」都是**格式化过的文本**：
+`YYYY-MM-DD HH24:MI:SS`，北京时间，不带偏移、不带微秒。
+
+格式化统一走 `public.fmt_bj_ts()`（定义在 `002` 里，两个 status 函数都用它）——
+想改格式只改那一处。它也能直接用在随手查询上：
+
+```sql
+select id, email, content, public.fmt_bj_ts(created_at) as created_at_bj
+  from public.guestbook_messages order by id desc limit 20;
+```
+
+> ⚠️ 用 `at time zone 'Asia/Shanghai'`，**不是** `set timezone`：
+> 前者只影响这一处；后者会改整个会话/角色的行为，别人（或别的工具）连上来会莫名其妙。
+>
+> ⚠️ 代价是丢了「可排序的时间戳」。这两个函数一个 1 行、一个最多 10 行，
+> 本来就是给人看的，不值当为它保留机器格式。
+>
+> ⚠️ **改返回类型必须 `drop` 再 `create`** —— `create or replace` 不允许改返回类型，
+> 会报 `ERROR: 42P13: cannot change return type of existing function`。
+> 所以 `002` / `003` 里这两个函数是 `drop function if exists … ;` + `create`，
+> 仍然是「跑第二遍不报错」的（drop 幂等）。**别顺手把 drop 删了** ——
+> 测试里有 `--break=no-drop` 专门钉这一条。
 
 ### 接上：三步，都是可执行语句
 
@@ -254,8 +287,8 @@ NODE_PATH=$PWD/node_modules node /tmp/jtools/run-feishu-sql.mjs --break=narrow-s
 **不写 `error_msg`**（真 pg_net 就是如此），飞书的原文放 `content`。
 第一版桩把原文塞进了 `error_msg`，于是「诊断提示你去看 `error_msg`」这个错误在本地是绿的。
 
-**③ 配置 + 诊断（`003`）** —— 断言 52 条，其中第一条就是本轮的回归点
-（「没配时诊断必须仍然返回 1 行」）：
+**③ 配置 + 诊断（`003`）** —— 断言 67 条，其中第一条就是本轮的回归点
+（「没配时诊断必须仍然返回 1 行」），另外还钉住时间格式和幂等：
 
 ```bash
 NODE_PATH=$PWD/node_modules node /tmp/jtools/run-feishu-config-sql.mjs
@@ -264,11 +297,23 @@ NODE_PATH=$PWD/node_modules node /tmp/jtools/run-feishu-config-sql.mjs --break=n
 NODE_PATH=$PWD/node_modules node /tmp/jtools/run-feishu-config-sql.mjs --break=no-mask           # 红 2
 NODE_PATH=$PWD/node_modules node /tmp/jtools/run-feishu-config-sql.mjs --break=no-revoke         # 红 3
 NODE_PATH=$PWD/node_modules node /tmp/jtools/run-feishu-config-sql.mjs --break=hint-always-ok    # 红 1
+NODE_PATH=$PWD/node_modules node /tmp/jtools/run-feishu-config-sql.mjs --break=no-timezone       # 红 2
+NODE_PATH=$PWD/node_modules node /tmp/jtools/run-feishu-config-sql.mjs --break=keep-microseconds # 红 6
+NODE_PATH=$PWD/node_modules node /tmp/jtools/run-feishu-config-sql.mjs --break=no-drop           # 红 2
 ```
 
 桩 SQL 单独放在 `/tmp/jtools/stubs-feishu.sql` —— 不写在 JS 模板字符串里，
 因为 SQL 注释里出现反引号会把 JS 模板字符串截断，报出来的是个指向注释文字的
 `SyntaxError`，很难一眼看出根因（这个坑踩过两次）。
+
+> 🔴 **夹具的会话时区必须钉成 UTC。**
+> PGlite 的默认会话时区**继承宿主机**（这台机器是 `Etc/GMT-8`），
+> 而**线上 Supabase 是 UTC**。于是 `to_char(ts, '...')`（不带 `at time zone`）
+> 在本地恰好也打出北京时间 —— 「忘了转时区」这个 bug **在本地是绿的**，
+> 只有真实用户看到的才是 `08:54` 而不是 `16:54`。
+> 这正是造红开关 `no-timezone` **第一版没红**的原因。
+> 现在 `stubs-feishu.sql` 末尾显式 `set timezone = 'UTC';`，
+> 并且【1】阶段有一条断言钉住它 —— **夹具环境不一致 = 假绿灯**。
 
 **④ 对真 Supabase 打一遍**（需要 `.env.local`）：
 

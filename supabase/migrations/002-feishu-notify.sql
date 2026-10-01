@@ -241,23 +241,49 @@ $$;
 
 revoke all on function public.guestbook_notify_test() from public, anon, authenticated;
 
+-- ①.5 时间格式化 —— 下面两个 status 函数都靠它
+--      ⚠️ Supabase 的 SQL Editor 用 **UTC** 显示 timestamptz，而且带 6 位微秒：
+--           2026-10-01 08:54:32.887717+00     ← 这一刻北京时间其实是 16:54
+--         这两个 status 函数的输出**就是给人看的**，格式该按人的习惯来，
+--         而不是按存储类型来。所以「时间列」一律输出**格式化后的文本**。
+--      ⚠️ 用 `at time zone` 而不是 `set timezone`：前者只影响这一处，
+--         后者会改整个会话/角色的行为，别人（或别的工具）连上来会莫名其妙。
+--     （飞书卡片里那行时间用的是同一个写法，见上面 build_guestbook_card。）
+create or replace function public.fmt_bj_ts(p_ts timestamptz)
+returns text
+language sql
+stable          -- ⚠️ 不是 immutable：`at time zone` 依赖时区数据库，PG 里它是 stable
+as $$
+  select case when p_ts is null then null
+              else to_char(p_ts at time zone 'Asia/Shanghai', 'YYYY-MM-DD HH24:MI:SS') end
+$$;
+
+revoke all on function public.fmt_bj_ts(timestamptz) from public, anon, authenticated;
+
 -- ② 看最近 10 次通知的结果
 --    ⚠️ pg_net 是**异步**的：函数只负责把请求排进队列，响应事后才写进 net._http_response。
 --       而且那张表是 unlogged、**只保留 6 小时** —— 想排查就趁早。
 --       这就是「webhook 填错了却完全看不出来」的解药。
-create or replace function public.guestbook_notify_status()
+--
+--    ⚠️ 必须 **drop 再 create**：`created_at` 从 timestamptz 改成了 text，
+--       而 `create or replace` **不允许改返回类型** —— 直接改会报
+--       `ERROR: 42P13: cannot change return type of existing function`。
+--       （所以这个文件仍然是「跑第二遍不报错」的：drop 是幂等的。）
+drop function if exists public.guestbook_notify_status();
+
+create function public.guestbook_notify_status()
 returns table (
   request_id  bigint,
   http_status int,
   error_msg   text,
   content     text,
-  created_at  timestamptz
+  created_at  text      -- 北京时间，YYYY-MM-DD HH24:MI:SS（响应记下来的时刻）
 )
 language sql
 security definer
 set search_path = public
 as $$
-  select r.id, r.status_code, r.error_msg, left(r.content, 300), r.created
+  select r.id, r.status_code, r.error_msg, left(r.content, 300), public.fmt_bj_ts(r.created)
     from net._http_response r
    order by r.created desc
    limit 10;

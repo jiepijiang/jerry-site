@@ -368,6 +368,10 @@ GITHUB_TOKEN=$(gh auth token) npx generate-snake-animation@3 \
 - **没配 = 静默 no-op**：留言照常入库，只是不通知。这份迁移不开也无害。
   代价是「配错了也看不出来」，所以 `003-feishu-config.sql` 补了一个**永远返回 1 行**的
   `guestbook_feishu_status()` —— 不看日志就能问出「到底配没配、发没发出去、为什么被拒」。
+- **时间按人的习惯打**：SQL Editor 按 UTC 显示 `timestamptz`（`08:54+00` 其实是北京时间 16:54），
+  所以两个 status 函数的「时间列」都输出**格式化过的文本**（`YYYY-MM-DD HH24:MI:SS`，北京时间）。
+  统一走 `public.fmt_bj_ts()`，也能套在随手查询上：
+  `select public.fmt_bj_ts(created_at) from public.guestbook_messages;`
 
 配置三步（建机器人 → 配一行 → `select guestbook_notify_test()`）见 `supabase/README.md`。
 
@@ -402,13 +406,16 @@ NODE_PATH=$PWD/node_modules node /tmp/jtools/run-feishu-sql.mjs --break=no-confi
 NODE_PATH=$PWD/node_modules node /tmp/jtools/run-feishu-sql.mjs --break=sign-key
 NODE_PATH=$PWD/node_modules node /tmp/jtools/run-feishu-sql.mjs --break=narrow-search-path
 
-# ③ 配置 + 诊断（含「没配时诊断仍要返回 1 行」这条回归）
-NODE_PATH=$PWD/node_modules node /tmp/jtools/run-feishu-config-sql.mjs   # 52 条
+# ③ 配置 + 诊断（含「没配时诊断仍要返回 1 行」+ 时间格式 + 幂等）
+NODE_PATH=$PWD/node_modules node /tmp/jtools/run-feishu-config-sql.mjs   # 67 条
 NODE_PATH=$PWD/node_modules node /tmp/jtools/run-feishu-config-sql.mjs --break=status-zero-rows  # 红 8
 NODE_PATH=$PWD/node_modules node /tmp/jtools/run-feishu-config-sql.mjs --break=no-validate       # 红 3
 NODE_PATH=$PWD/node_modules node /tmp/jtools/run-feishu-config-sql.mjs --break=no-mask           # 红 2
 NODE_PATH=$PWD/node_modules node /tmp/jtools/run-feishu-config-sql.mjs --break=no-revoke         # 红 3
 NODE_PATH=$PWD/node_modules node /tmp/jtools/run-feishu-config-sql.mjs --break=hint-always-ok    # 红 1
+NODE_PATH=$PWD/node_modules node /tmp/jtools/run-feishu-config-sql.mjs --break=no-timezone       # 红 2
+NODE_PATH=$PWD/node_modules node /tmp/jtools/run-feishu-config-sql.mjs --break=keep-microseconds # 红 6
+NODE_PATH=$PWD/node_modules node /tmp/jtools/run-feishu-config-sql.mjs --break=no-drop           # 红 2
 
 # ④ 对真 Supabase 打一遍（需要 .env.local）
 node /tmp/jtools/probe-rpc-live.mjs           # 只读：11 条

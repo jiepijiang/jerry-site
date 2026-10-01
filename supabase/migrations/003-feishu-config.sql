@@ -140,8 +140,24 @@ revoke all on function public.guestbook_configure_feishu(text, text) from public
 -- ⚠️ 一个容易白跑一趟的细节：pg_net 的 `error_msg` **只在传输层失败时**才有值
 --    （DNS 解析不了 / 连不上 / 超时）。**飞书返回 400 时 `error_msg` 是 null**，
 --    真正的原因（`sign match fail` 之类）在 `content` 里 —— 所以下面两列都给你。
+--
+-- ⚠️ `last_sent_at` 是**格式化过的文本**（北京时间、不带微秒），不是 timestamptz。
+--    Supabase 的 SQL Editor 按 UTC 显示 timestamptz，打出来是
+--        2026-10-01 08:54:32.887717+00      ← 北京时间其实是 16:54
+--    这个函数的输出就是给人看的，格式按人习惯来。
+--    格式化统一走 `public.fmt_bj_ts()`（定义在 002 里）——
+--    想改格式只改那一处；查 `guestbook_messages` 时也可以直接套它：
+--        select id, email, content, public.fmt_bj_ts(created_at) as created_at_bj
+--          from public.guestbook_messages order by id desc limit 20;
+--
+-- ⚠️ 必须 **drop 再 create**：`last_sent_at` 从 timestamptz 改成了 text，
+--    而 `create or replace` **不允许改返回类型** —— 直接改会报
+--    `ERROR: 42P13: cannot change return type of existing function`。
+--    （所以这个文件仍然是「跑第二遍不报错」的：drop 是幂等的。）
 -- ---------------------------------------------------------------------------
-create or replace function public.guestbook_feishu_status()
+drop function if exists public.guestbook_feishu_status();
+
+create function public.guestbook_feishu_status()
 returns table (
   configured       boolean,      -- app_config 里有没有 webhook URL
   webhook_masked   text,         -- 打码后的 URL（用来确认配的是哪一条）
@@ -152,7 +168,7 @@ returns table (
   last_http_status int,
   last_error       text,         -- ⚠️ 只在**传输层**失败时才有值（DNS / 连不上 / 超时）
   last_content     text,         -- ⚠️ 飞书拒收时，原因在**这一列**（error_msg 会是 null）
-  last_sent_at     timestamptz,
+  last_sent_at     text,         -- 北京时间，YYYY-MM-DD HH24:MI:SS（见下面那段说明）
   hint             text          -- 「下一步该做什么」，未配置时就是那句配置语句
 )
 language plpgsql
@@ -160,8 +176,9 @@ security definer
 set search_path = public, extensions
 as $$
 declare
-  v_url    text;
-  v_secret text;
+  v_url     text;
+  v_secret  text;
+  v_sent_at timestamptz;   -- 原始值先接在局部变量上，出去之前再格式化
 begin
   select value into v_url    from public.app_config where key = 'feishu_webhook_url';
   select value into v_secret from public.app_config where key = 'feishu_secret';
@@ -179,10 +196,14 @@ begin
     execute 'select count(*)::int from net._http_response' into response_rows;
     execute 'select r.id, r.status_code, r.error_msg, left(r.content, 300), r.created
                from net._http_response r order by r.created desc limit 1'
-      into last_request_id, last_http_status, last_error, last_content, last_sent_at;
+      into last_request_id, last_http_status, last_error, last_content, v_sent_at;
   else
     response_rows := 0;
   end if;
+
+  -- ⚠️ 不能直接 `into last_sent_at`：那是 text，timestamptz 转 text 会走
+  --    默认输出格式（UTC + 6 位微秒），正好是我们想避免的那个样子。
+  last_sent_at := public.fmt_bj_ts(v_sent_at);
 
   hint := case
     when not configured then
