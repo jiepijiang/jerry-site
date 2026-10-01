@@ -87,8 +87,9 @@ npm run preview  # 预览构建产物
 ├── vite.config.js
 ├── .env.example                # 复制成 .env.local 填 Supabase 配置（见「留言板」）
 ├── supabase/
-│   ├── migrations/001-guestbook.sql   # 留言板的表 + RLS + 写入函数（幂等）
-│   └── README.md                      # 怎么跑、建了什么、自检语句
+│   ├── migrations/001-guestbook.sql      # 留言板的表 + RLS + 写入函数（幂等）
+│   ├── migrations/002-feishu-notify.sql  # 新留言 → 飞书群机器人通知（不配就是 no-op）
+│   └── README.md                         # 怎么跑、建了什么、自检语句
 ├── public/static/
 │   ├── fonts/                  # Ubuntu（正文）、Pacifico（渐变标题）
 │   ├── img/                    # 头像、背景、项目卡片图标、贪吃蛇贡献图（snake.svg）
@@ -351,17 +352,50 @@ GITHUB_TOKEN=$(gh auth token) npx generate-snake-animation@3 \
 （Vite 的 `import.meta.env.VITE_*` 是**构建期静态替换**，变量没注入不会报错，
 只会静默地把 endpoint 变成空串，线上表现是「点了没反应」——本地复现不出来。）
 
+### 新留言 → 飞书通知
+
+`002-feishu-notify.sql`：新留言进来时往飞书群机器人推一张卡片（邮箱 / 时间 / 正文）。
+
+- **为什么不是邮件**：Supabase 自带的邮件只用于 auth（确认/重置），发不了业务通知；
+  自己接 Resend/SendGrid 还要配发信域名和 SPF/DKIM，否则大概率进垃圾箱。
+  飞书一个 webhook URL 就够，还免费即时。
+- 🔴 **为什么不照搬 parking-notice 的纯前端做法**：那样 **webhook URL 会进前端 bundle**，
+  谁都能扒出来往你群里灌消息。留言板是公开站点，这个风险不能接受 ——
+  所以 URL 存在 `app_config` 表里（anon 读不到），由数据库触发器在服务端发。
+- **通知失败绝不拖垮留言**：整段发送包在 `exception when others` 里，只 `raise warning`。
+  pg_net 没装 / webhook 填错 / 网络不通，都不该让「按下发送留言」失败。
+- **没配 = 静默 no-op**：留言照常入库，只是不通知。这份迁移不开也无害。
+
+配置三步（建机器人 → 填 URL → `select guestbook_notify_test()`）见 `supabase/README.md`。
+
+> ⚠️ 里面有两个**只有真跑才会发现**的坑，都写在 `supabase/README.md` 里了：
+> ① Postgres 的 `'\n'` 不是换行（要写 `E'...\n'`）；
+> ② `set search_path = public` 会让 `extensions` 里的 `hmac()` 找不到 ——
+> 只在「开了签名校验」时才炸，不配 secret 的项目永远发现不了。
+
 ### 怎么验
 
 ```bash
-# SQL 语义（真 Postgres，WASM 版，不需要连 Supabase）
 cd /Users/jiepijiang/.workbuddy-ai/binaries/node/workspace
-NODE_PATH=$PWD/node_modules node /tmp/jtools/run-guestbook-sql.mjs           # 32 条
+
+# ① SQL 语义（WASM 版真 Postgres，不需要连 Supabase）
+NODE_PATH=$PWD/node_modules node /tmp/jtools/run-guestbook-sql.mjs   # 32 条
 NODE_PATH=$PWD/node_modules node /tmp/jtools/run-guestbook-sql.mjs --break=email-rate
 NODE_PATH=$PWD/node_modules node /tmp/jtools/run-guestbook-sql.mjs --break=ip-hash
 NODE_PATH=$PWD/node_modules node /tmp/jtools/run-guestbook-sql.mjs --break=rls
 
-# 前端（真 Chromium）
+# ② 飞书通知（net.http_post / hmac 用桩函数替掉）
+NODE_PATH=$PWD/node_modules node /tmp/jtools/run-feishu-sql.mjs      # 31 条
+NODE_PATH=$PWD/node_modules node /tmp/jtools/run-feishu-sql.mjs --break=no-exception
+NODE_PATH=$PWD/node_modules node /tmp/jtools/run-feishu-sql.mjs --break=no-config
+NODE_PATH=$PWD/node_modules node /tmp/jtools/run-feishu-sql.mjs --break=sign-key
+NODE_PATH=$PWD/node_modules node /tmp/jtools/run-feishu-sql.mjs --break=narrow-search-path
+
+# ③ 对真 Supabase 打一遍（需要 .env.local）
+node /tmp/jtools/probe-rpc-live.mjs           # 只读：11 条
+node /tmp/jtools/probe-rpc-live.mjs --write   # 含真实写入 + 限流
+
+# ④ 前端（真 Chromium）
 node /tmp/jtools/probe-guestbook.mjs with-env      # 20 条
 node /tmp/jtools/probe-guestbook.mjs without-env   # 20 条
 node /tmp/jtools/probe-guestbook-errors.mjs        # 20 条，把每种后端响应都打一遍
